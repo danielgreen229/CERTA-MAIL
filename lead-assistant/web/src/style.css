@@ -196,7 +196,7 @@ label { display: block; font-size: 0.87rem; color: var(--muted); margin: 0.6rem 
 .empty { padding: 2.5rem 1rem; text-align: center; color: var(--muted); }
 .spinner {
   width: 1.15rem; height: 1.15rem; border: 2px solid var(--line); border-top-color: var(--accent);
-  border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; vertical-align: middle;
+  border-radius: 50%; animation: spin 1.6s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite; display: inline-block; vertical-align: middle;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .progress { height: 0.5rem; background: var(--line); border-radius: 99px; overflow: hidden; }

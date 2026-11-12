@@ -44,8 +44,8 @@ const FIELD: Record<string, { label: string; placeholder?: string; hint?: string
   user: { label: 'Адрес почты', placeholder: 'name@mail.ru' },
   password: { label: 'Пароль для внешних приложений', hint: 'Не обычный пароль от почты — его создают в настройках безопасности ящика.' },
   folder: { label: 'Папка', placeholder: 'INBOX' },
-  smtp_host: { label: 'SMTP-сервер для ответов', placeholder: 'пусто — smtp.* от IMAP-сервера' },
-  smtp_port: { label: 'SMTP-порт', placeholder: '465' },
+  smtp_host: { label: 'SMTP-сервер для ответов', placeholder: 'пусто — подставится сам', hint: 'Обычно не нужен: imap.mail.ru → smtp.mail.ru.' },
+  smtp_port: { label: 'SMTP-порт', placeholder: '465 (по умолчанию)' },
   bot_token: { label: 'Токен бота', placeholder: '1234567890:AA…', hint: 'Его выдаёт @BotFather после команды /newbot.' },
   api_base: { label: 'Адрес Bot API тестового сервиса', placeholder: 'http://127.0.0.1:8099' },
   base_url: { label: 'Базовый адрес' },
@@ -238,6 +238,7 @@ onMounted(load)
                   <div v-for="f in extraFields(c)" :key="f">
                     <label :for="c.name + f">{{ FIELD[f]?.label ?? f }}</label>
                     <input :id="c.name + f" v-model="form[f] as string" :placeholder="FIELD[f]?.placeholder" autocomplete="off" />
+                    <p v-if="FIELD[f]?.hint" class="small muted hint">{{ FIELD[f]?.hint }}</p>
                   </div>
                 </div>
                 <label class="check"><input v-model="form.test_service" type="checkbox" /> Это тестовый сервис (для проверки без настоящих писем)</label>
