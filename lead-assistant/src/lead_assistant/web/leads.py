@@ -465,9 +465,29 @@ def decide(
     return {"decision_id": cursor.lastrowid, "warnings": warnings}
 
 
+def assignees(conn: sqlite3.Connection) -> dict[str, list[dict[str, str]]]:
+    """Кого можно назначить: активные сотрудники системы и отделы из настроек."""
+    people = [
+        {"name": row["name"], "role": row["role"]}
+        for row in conn.execute("SELECT name, role FROM users WHERE active = 1 ORDER BY name")
+    ]
+    mapping = get_settings(conn).get("assignment") or {}
+    departments = sorted({str(v).strip() for v in mapping.values() if str(v or "").strip()})
+    return {"people": people, "departments": [{"name": name} for name in departments]}
+
+
 def assign(conn: sqlite3.Connection, key: str, user: User, assignee: object, due: object) -> None:
     if assignee is not None and not isinstance(assignee, str):
         raise DecisionError("INVALID_ARGUMENT", "Ответственный должен быть строкой")
+    name = (assignee or "").strip()
+    if name:
+        options = assignees(conn)
+        known = {item["name"] for group in options.values() for item in group}
+        if name not in known:
+            raise DecisionError(
+                "INVALID_ARGUMENT",
+                "Назначить можно только сотрудника из системы или отдел из настроек",
+            )
     due_text = None
     if due:
         try:

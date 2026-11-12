@@ -261,10 +261,17 @@ def search(conn: sqlite3.Connection, user: User, text: str, limit: int = 5) -> d
         f"WHERE chunks_fts MATCH ? AND d.status = 'indexed' AND d.min_role IN ({marks}) "
         "AND COALESCE(d.valid_from, '0000') <= ? AND COALESCE(d.valid_to, '9999') >= ? "
         "ORDER BY score LIMIT ?",
-        (query, *roles, today, today, limit),
+        (query, *roles, today, today, limit * 4),
     ).fetchall()
-    results = []
+    results: list[dict[str, Any]] = []
+    seen_documents: set[int] = set()
     for row in rows:
+        # Из каждого документа — один, самый подходящий фрагмент: так в выдаче разные источники.
+        if row["id"] in seen_documents:
+            continue
+        seen_documents.add(row["id"])
+        if len(results) >= limit:
+            break
         results.append(
             {
                 "chunk_id": row["chunk_id"],

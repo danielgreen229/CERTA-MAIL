@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api, ApiError, CATEGORY, PRIORITY, type Job, type LeadSummary } from '../api'
 import Icon, { type IconName } from '../components/Icon.vue'
 import LeadCard from '../components/LeadCard.vue'
+import UiSelect from '../components/UiSelect.vue'
 import { applyFolder, EMPTY_FILTERS, filters, loadMail, mail, queryString, type FilterKey } from '../mailbox'
 
 const route = useRoute()
@@ -164,6 +165,20 @@ onMounted(() => {
   window.addEventListener('keydown', onKey)
 })
 onUnmounted(() => window.removeEventListener('keydown', onKey))
+const PRIORITY_OPTIONS = [
+  { value: '', label: 'Любая срочность' },
+  { value: 'high', label: 'Высокая', tone: 'high' },
+  { value: 'medium', label: 'Средняя', tone: 'medium' },
+  { value: 'low', label: 'Низкая', tone: 'low' },
+]
+const STATE_OPTIONS = [
+  { value: '', label: 'Любое состояние' },
+  { value: 'new', label: 'Ещё не разобраны' },
+  { value: 'pending', label: 'Ждут решения' },
+  { value: 'accepted', label: 'Приняты' },
+  { value: 'corrected', label: 'Исправлены' },
+  { value: 'rejected', label: 'Отклонены' },
+]
 </script>
 
 <template>
@@ -237,18 +252,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
       </div>
 
       <div class="toolbar">
-        <select v-model="filters.priority" aria-label="Срочность">
-          <option value="">Любая срочность</option>
-          <option v-for="(t, k) in PRIORITY" :key="k" :value="k">{{ t }}</option>
-        </select>
-        <select v-model="filters.state" aria-label="Состояние">
-          <option value="">Любое состояние</option>
-          <option value="new">Ещё не разобраны</option>
-          <option value="pending">Ждут решения</option>
-          <option value="accepted">Приняты</option>
-          <option value="corrected">Исправлены</option>
-          <option value="rejected">Отклонены</option>
-        </select>
+        <UiSelect v-model="filters.priority" class="flt" :options="PRIORITY_OPTIONS" aria-label="Срочность" />
+        <UiSelect v-model="filters.state" class="flt" :options="STATE_OPTIONS" aria-label="Состояние" />
         <span class="grow"></span>
         <span v-if="data" class="small muted count-label">Показано: <b class="num">{{ data.leads.length }}</b></span>
         <button v-if="filtered" class="ghost" @click="reset"><Icon name="close" /> Сбросить</button>
@@ -371,7 +376,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
   border-radius: 99px; padding: 0 0.45rem; color: var(--muted);
 }
 .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid var(--line); }
-.toolbar select { width: auto; min-width: 11rem; }
+.toolbar .flt { width: 12.5rem; }
 
 .list th { background: var(--surface-2); padding: 0.6rem 1rem; white-space: nowrap; }
 .list td { padding: 0.8rem 1rem; vertical-align: middle; }
@@ -443,7 +448,7 @@ td.late { color: var(--brand-red); font-weight: 600; }
   .stat { padding: 0.8rem 0.9rem; }
   .stat-value { font-size: 1.7rem; }
   .stat-hint { display: none; }
-  .toolbar select { min-width: 0; flex: 1 1 40%; }
+  .toolbar .flt { width: auto; flex: 1 1 40%; }
   .toolbar .count-label { display: none; }
   .list thead { display: none; }
   .list, .list tbody { display: block; }

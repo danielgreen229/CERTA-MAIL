@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { api, ApiError, CATEGORY, PRIORITY, formatDate, leadUrl, type Found, type LeadDetail } from '../api'
 import Icon from './Icon.vue'
+import UiSelect from './UiSelect.vue'
 
 const props = defineProps<{ leadKey: string }>()
 const emit = defineEmits<{ close: []; changed: [] }>()
@@ -58,7 +59,18 @@ function startCorrect() {
   mode.value = 'correct'
 }
 
-function startAssign() {
+const options = ref<{ people: Array<{ name: string; role: string }>; departments: Array<{ name: string }> } | null>(null)
+const ROLE_TITLE: Record<string, string> = { manager: 'менеджер', supervisor: 'руководитель', admin: 'администратор' }
+
+async function startAssign() {
+  if (!options.value) {
+    try {
+      options.value = await api.get('/api/assignees')
+    } catch (e) {
+      actionError.value = e instanceof ApiError ? e.message : 'Не удалось загрузить список сотрудников'
+      return
+    }
+  }
   form.value.assignee = lead.value?.assignee ?? ''
   form.value.due_at = lead.value?.due_at ? lead.value.due_at.slice(0, 16) : ''
   mode.value = 'assign'
@@ -190,6 +202,13 @@ const heading = computed(() => {
   const first = String(l.text ?? '').split('\n')[0] ?? ''
   return (first.startsWith('Тема: ') ? first.slice(6) : first).slice(0, 120) || 'Без темы'
 })
+const CATEGORY_OPTIONS = Object.entries(CATEGORY).map(([value, label]) => ({ value, label }))
+const PRIORITY_OPTIONS = Object.entries(PRIORITY).map(([value, label]) => ({ value, label, tone: value }))
+const assigneeOptions = computed(() => [
+  { value: '', label: 'Без ответственного' },
+  ...(options.value?.people ?? []).map((p) => ({ value: p.name, label: p.name, hint: ROLE_TITLE[p.role] ?? p.role, group: 'Сотрудники' })),
+  ...(options.value?.departments ?? []).map((d) => ({ value: d.name, label: d.name, group: 'Отделы' })),
+])
 </script>
 
 <template>
@@ -299,15 +318,11 @@ const heading = computed(() => {
               <div class="row">
                 <div class="grow">
                   <label for="cat">Категория</label>
-                  <select id="cat" v-model="form.category">
-                    <option v-for="(t, k) in CATEGORY" :key="k" :value="k">{{ t }}</option>
-                  </select>
+                  <UiSelect id="cat" v-model="form.category" :options="CATEGORY_OPTIONS" aria-label="Категория" />
                 </div>
                 <div class="grow">
                   <label for="pri">Приоритет</label>
-                  <select id="pri" v-model="form.priority">
-                    <option v-for="(t, k) in PRIORITY" :key="k" :value="k">{{ t }}</option>
-                  </select>
+                  <UiSelect id="pri" v-model="form.priority" :options="PRIORITY_OPTIONS" aria-label="Срочность" />
                 </div>
               </div>
               <template v-if="form.category !== 'spam'">
@@ -332,7 +347,8 @@ const heading = computed(() => {
 
           <form v-if="mode === 'assign'" class="sub" @submit.prevent="saveAssign">
             <label for="assignee">Ответственный</label>
-            <input id="assignee" v-model="form.assignee" />
+            <UiSelect id="assignee" v-model="form.assignee" :options="assigneeOptions" aria-label="Ответственный" />
+            <p class="small muted">Сотрудников добавляет администратор в разделе «Настройки».</p>
             <label for="due">Срок реакции</label>
             <input id="due" v-model="form.due_at" type="datetime-local" />
             <div class="row actions">

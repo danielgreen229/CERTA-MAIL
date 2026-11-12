@@ -441,6 +441,11 @@ def create_app(paths: AppPaths) -> Starlette:
             )
             return JSONResponse(get_settings(conn))
 
+    def list_assignees(request: Request) -> Response:
+        with db() as conn:
+            current_user(request, conn)
+            return JSONResponse(leads.assignees(conn))
+
     def list_users(request: Request) -> Response:
         with db() as conn:
             current_user(request, conn, "admin")
@@ -567,6 +572,7 @@ def create_app(paths: AppPaths) -> Starlette:
         Route("/api/connectors/{name}/import", import_connector, methods=["POST"]),
         Route("/api/settings", get_settings_view),
         Route("/api/settings", put_settings, methods=["PUT"]),
+        Route("/api/assignees", list_assignees),
         Route("/api/users", list_users),
         Route("/api/users", create_user, methods=["POST"]),
         Route("/api/audit", audit_log),

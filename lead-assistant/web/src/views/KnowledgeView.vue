@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiSelect from '../components/UiSelect.vue'
 import Icon from '../components/Icon.vue'
 import { onMounted, ref } from 'vue'
 import { api, ApiError, formatDate, ROLE, type KbHit } from '../api'
@@ -94,6 +95,7 @@ async function search() {
 }
 
 onMounted(load)
+const ROLE_OPTIONS = Object.entries(ROLE).map(([value, label]) => ({ value, label: `${label} и выше` }))
 </script>
 
 <template>
@@ -129,9 +131,7 @@ onMounted(load)
         <div><label for="vt">Действует по</label><input id="vt" v-model="form.valid_to" type="date" /></div>
         <div>
           <label for="r">Доступ</label>
-          <select id="r" v-model="form.min_role">
-            <option v-for="(t, k) in ROLE" :key="k" :value="k">{{ t }} и выше</option>
-          </select>
+          <UiSelect id="r" v-model="form.min_role" :options="ROLE_OPTIONS" aria-label="Кто видит документ" />
         </div>
         <div style="align-self: end"><button class="primary" type="submit" :disabled="busy">Загрузить</button></div>
       </form>

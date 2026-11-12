@@ -307,3 +307,22 @@ def test_source_tabs_split_leads_by_mailbox_and_channel(tmp_path: Path) -> None:
         assert len(client.get("/api/leads?source=email").json()["leads"]) == len(
             [t for t in data["leads"] if t["source"] == "email"]
         )
+
+
+def test_assignee_is_chosen_from_staff_or_departments(tmp_path: Path) -> None:
+    paths = make_paths(tmp_path, PROCESSED)
+    with client_for(paths) as client:
+        options = client.get("/api/assignees").json()
+        people = {p["name"] for p in options["people"]}
+        departments = {d["name"] for d in options["departments"]}
+        assert people and "Отдел продаж" in departments
+        person = sorted(people)[0]
+        ok = client.post("/api/leads/2/assign", json={"assignee": person, "due_at": None})
+        assert ok.status_code == 200
+        assert client.get("/api/leads/2").json()["assignee"] == person
+        assert (
+            client.post("/api/leads/2/assign", json={"assignee": "Отдел продаж"}).status_code == 200
+        )
+        bad = client.post("/api/leads/2/assign", json={"assignee": "Вася с улицы"})
+        assert bad.status_code == 400 and error_code(bad) == "INVALID_ARGUMENT"
+        assert client.post("/api/leads/2/assign", json={"assignee": ""}).status_code == 200
