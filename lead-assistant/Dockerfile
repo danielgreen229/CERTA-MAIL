@@ -20,6 +20,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     LEADS_HOST=0.0.0.0 \
     LEADS_PORT=8000
 WORKDIR /app
+# Шрифт с кириллицей для выгрузки в PDF.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
 COPY requirements.lock ./
 RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 COPY pyproject.toml README.md ./

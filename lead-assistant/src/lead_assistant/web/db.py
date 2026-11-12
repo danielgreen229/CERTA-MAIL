@@ -156,6 +156,20 @@ CREATE TABLE IF NOT EXISTS imported_messages (
     imported_at TEXT NOT NULL,
     PRIMARY KEY (channel, external_id)
 );
+CREATE TABLE IF NOT EXISTS outgoing (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_key TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    recipient TEXT NOT NULL,
+    subject TEXT,
+    body TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error TEXT,
+    message_id TEXT,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS outgoing_lead ON outgoing(lead_key, id);
 """
 
 

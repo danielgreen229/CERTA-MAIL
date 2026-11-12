@@ -14,6 +14,7 @@ import logging
 import os
 import sqlite3
 from collections.abc import Callable, Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +31,7 @@ from lead_assistant.backends import use_utf8_console
 from lead_assistant.extract import extract
 from lead_assistant.models import LeadError
 from lead_assistant.storage import LeadStore
-from lead_assistant.web import auth, connectors, jobs, kb, leads, quality
+from lead_assistant.web import auth, connectors, export, jobs, kb, leads, outbox, quality
 from lead_assistant.web.config import AppPaths
 from lead_assistant.web.db import audit, connect, get_settings, init_db, lead_key, put_setting
 
@@ -202,12 +203,44 @@ def create_app(paths: AppPaths) -> Starlette:
         detail = view.detail(leads.history(conn, key))
         detail["knowledge"] = kb.search(conn, user, str(view.lead.get("text") or ""), limit=3)
         shipments = []
-        for item in view.extraction["fields"].get("order") or []:
-            status = connectors.shipment_status(conn, str(item["value"]["number"]))
+        numbers = dict.fromkeys(  # номер, упомянутый в письме дважды, запрашивается один раз
+            str(item["value"]["number"]) for item in view.extraction["fields"].get("order") or []
+        )
+        for number in numbers:
+            status = connectors.shipment_status(conn, number)
             if status:
                 shipments.append(status)
         detail["shipments"] = shipments
+        detail["reply"] = outbox.reply_info(conn, view.lead)
+        detail["replies"] = outbox.sent_replies(conn, key)
         return detail
+
+    async def send_reply(request: Request) -> Response:
+        key = request.path_params["key"]
+        data = await body(request)
+        with db() as conn:
+            user = current_user(request, conn)
+            view = leads.find_view(conn, store, key)
+            sent = outbox.send_reply(
+                conn, view.lead, user.id, data.get("text"), force=bool(data.get("force"))
+            )
+            detail = full_detail(conn, user, key)
+        return JSONResponse({"sent": sent, "lead": detail})
+
+    def export_leads(request: Request) -> Response:
+        fmt = str(request.query_params.get("format") or "json").lower()
+        with db() as conn:
+            current_user(request, conn)
+            views = leads.newest_first(
+                leads.filter_views(leads.all_views(conn, store), dict(request.query_params))
+            )
+            content, media_type, ext = export.render(fmt, views)
+        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M")
+        return Response(
+            content,
+            media_type=media_type,
+            headers={"Content-Disposition": f'attachment; filename="mail-{stamp}.{ext}"'},
+        )
 
     def lead_detail(request: Request) -> Response:
         with db() as conn:
@@ -361,6 +394,17 @@ def create_app(paths: AppPaths) -> Starlette:
                 connectors.configure(conn, request.path_params["name"], data, user.id)
             )
 
+    def add_mailbox(request: Request) -> Response:
+        with db() as conn:
+            user = current_user(request, conn, "admin")
+            return JSONResponse(connectors.add_mailbox(conn, user.id), status_code=201)
+
+    def remove_mailbox(request: Request) -> Response:
+        with db() as conn:
+            user = current_user(request, conn, "admin")
+            connectors.remove_mailbox(conn, request.path_params["name"], user.id)
+        return JSONResponse({"ok": True})
+
     def check_connector(request: Request) -> Response:
         with db() as conn:
             user = current_user(request, conn, "admin")
@@ -493,6 +537,8 @@ def create_app(paths: AppPaths) -> Starlette:
         Route("/api/auth/me", me),
         Route("/api/auth/password", change_password, methods=["POST"]),
         Route("/api/leads", list_leads),
+        Route("/api/leads/export", export_leads),
+        Route("/api/leads/{key:path}/reply", send_reply, methods=["POST"]),
         Route("/api/leads/{key:path}/decision", decide, methods=["POST"]),
         Route("/api/leads/{key:path}/assign", assign, methods=["POST"]),
         Route("/api/leads/{key:path}", lead_detail),
@@ -508,7 +554,9 @@ def create_app(paths: AppPaths) -> Starlette:
         Route("/api/kb/search", kb_search),
         Route("/api/kb/chunks/{chunk_id:int}", kb_chunk),
         Route("/api/connectors", list_connectors),
+        Route("/api/connectors", add_mailbox, methods=["POST"]),
         Route("/api/connectors/{name}", configure_connector, methods=["PUT"]),
+        Route("/api/connectors/{name}", remove_mailbox, methods=["DELETE"]),
         Route("/api/connectors/{name}/check", check_connector, methods=["POST"]),
         Route("/api/connectors/{name}/import", import_connector, methods=["POST"]),
         Route("/api/settings", get_settings_view),
@@ -537,6 +585,11 @@ def create_app(paths: AppPaths) -> Starlette:
         elif isinstance(exc, connectors.ConnectorError):
             status = 404 if exc.code == "NOT_FOUND" else 409
             code, message, details = exc.code, exc.message, {}
+        elif isinstance(exc, outbox.OutboxError):
+            status = {"INVALID_ARGUMENT": 400, "SEND_FAILED": 502}.get(exc.code, 409)
+            code, message, details = exc.code, exc.message, {}
+        elif isinstance(exc, export.ExportError):
+            status, code, message, details = 400, exc.code, exc.message, {}
         elif isinstance(exc, LeadError):
             status = {"NOT_FOUND": 404, "CONFLICT": 409, "INVALID_ARGUMENT": 400}.get(
                 exc.code.value, 503
@@ -560,6 +613,8 @@ def create_app(paths: AppPaths) -> Starlette:
         jobs.JobError: on_error,
         kb.KbError: on_error,
         connectors.ConnectorError: on_error,
+        outbox.OutboxError: on_error,
+        export.ExportError: on_error,
     }
     return Starlette(routes=routes, exception_handlers=exception_handlers)
 

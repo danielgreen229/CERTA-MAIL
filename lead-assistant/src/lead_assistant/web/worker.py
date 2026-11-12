@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
+import imaplib
 import json
 import logging
 import signal
+import sqlite3
 import tempfile
 import threading
 import time
@@ -29,7 +32,7 @@ from lead_assistant.llm import LlmSetupError
 from lead_assistant.models import STATUS_NEW, LeadError
 from lead_assistant.runner import RunConfig, run_processing
 from lead_assistant.storage import LeadStore
-from lead_assistant.web import jobs
+from lead_assistant.web import connectors, jobs
 from lead_assistant.web.config import AppPaths
 from lead_assistant.web.db import connect, get_settings, init_db, lead_key
 from lead_assistant.web.leads import analyses_from_run, sync_results
@@ -213,6 +216,39 @@ def summarize(run: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def check_mail(paths: AppPaths, conn: sqlite3.Connection) -> int:
+    """Забирает новые письма и сообщения из всех подключённых источников.
+
+    Если что-то пришло и включён автоматический разбор, ставит задачу обработки
+    (если другая уже идёт, новые письма разберёт следующая). Возвращает число новых.
+    """
+    settings = get_settings(conn).get("mail_check") or {}
+    admin = conn.execute("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1").fetchone()
+    if admin is None:
+        return 0
+    store = LeadStore(paths.leads_file)
+    imported = 0
+    for item in connectors.list_connectors(conn):
+        if item["kind"] not in ("imap", "telegram") or item["state"] != "ok":
+            continue
+        try:
+            result = connectors.import_messages(conn, store, item["name"], int(admin[0]))
+        except (connectors.ConnectorError, OSError, ValueError, imaplib.IMAP4.error) as error:
+            logger.warning("проверка %s не удалась: %s", item["name"], error)
+            continue
+        if result["imported"]:
+            logger.info("%s: новых писем %s", item["name"], result["imported"])
+        imported += int(result["imported"])
+    # Разбор ставится, пока есть неразобранные письма: пришедшие во время другой задачи
+    # не остаются висеть — их возьмёт следующая проверка.
+    if settings.get("auto_process", True) and any(
+        lead.get("status") == STATUS_NEW for lead in store.snapshot().leads
+    ):
+        with contextlib.suppress(jobs.JobError):
+            jobs.create_job(conn, int(admin[0]), {"source": "mail_check"})
+    return imported
+
+
 def run_forever(paths: AppPaths, poll_seconds: float = 2.0, once: bool = False) -> None:
     init_db(paths.db_file)
     conn = connect(paths.db_file)
@@ -229,7 +265,16 @@ def run_forever(paths: AppPaths, poll_seconds: float = 2.0, once: bool = False) 
         logger.info("восстановлены задачи после остановки обработчика: %s", recovered)
     logger.info("обработчик запущен: %s", paths.leads_file)
     last_recover = time.monotonic()
+    last_mail = 0.0
     while not stopping.is_set():
+        mail = get_settings(conn).get("mail_check") or {}
+        interval = max(15.0, float(mail.get("interval_seconds") or 60))
+        if not once and mail.get("enabled", True) and time.monotonic() - last_mail >= interval:
+            last_mail = time.monotonic()
+            try:
+                check_mail(paths, conn)
+            except Exception:  # проверка почты не должна останавливать обработчик
+                logger.exception("ошибка проверки почты")
         job = jobs.claim_next(conn)
         if job is None:
             if once:

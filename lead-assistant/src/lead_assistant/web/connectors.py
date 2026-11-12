@@ -9,12 +9,14 @@
 
 from __future__ import annotations
 
+import base64
 import email
 import email.header
 import email.policy
 import email.utils
 import imaplib
 import json
+import re
 import sqlite3
 import urllib.error
 import urllib.parse
@@ -48,7 +50,7 @@ SPECS: dict[str, Spec] = {
             "email",
             "Почта (IMAP)",
             "imap",
-            ("host", "port", "user", "password", "folder"),
+            ("host", "port", "user", "password", "folder", "smtp_host", "smtp_port"),
             "Импорт последних 50 писем папки как заявок channel=email (письма не помечаются "
             "прочитанными). Повтор по Message-ID исключён.",
         ),
@@ -96,9 +98,56 @@ class ConnectorError(Exception):
         self.message = message
 
 
+_EXTRA_MAILBOX = re.compile(r"email-(\d+)")
+
+
+def spec_for(name: str) -> Spec:
+    """Описание подключения. Дополнительные почтовые ящики (email-2, email-3…) — та же «Почта»."""
+    if name in SPECS:
+        return SPECS[name]
+    if _EXTRA_MAILBOX.fullmatch(name):
+        return SPECS["email"]
+    raise ConnectorError("NOT_FOUND", f"Нет подключения {name}")
+
+
+def is_mailbox(name: str) -> bool:
+    return name == "email" or bool(_EXTRA_MAILBOX.fullmatch(name))
+
+
+def mailbox_names(conn: sqlite3.Connection) -> list[str]:
+    """Все почтовые ящики: основной «email» и добавленные администратором."""
+    extra = [
+        row[0]
+        for row in conn.execute("SELECT name FROM connectors WHERE name LIKE 'email-%'")
+        if _EXTRA_MAILBOX.fullmatch(row[0])
+    ]
+    return ["email", *sorted(extra, key=lambda name: int(name.split("-")[1]))]
+
+
+def add_mailbox(conn: sqlite3.Connection, user_id: int) -> dict[str, Any]:
+    numbers = [int(name.split("-")[1]) for name in mailbox_names(conn)[1:]]
+    name = f"email-{max(numbers, default=1) + 1}"
+    with transaction(conn):
+        conn.execute(
+            "INSERT INTO connectors(name, config, state) VALUES (?, '{}', 'not_configured')",
+            (name,),
+        )
+        audit(conn, "connector_added", user_id, f"connector:{name}")
+    return _public(_load(conn, name))
+
+
+def remove_mailbox(conn: sqlite3.Connection, name: str, user_id: int) -> None:
+    if not _EXTRA_MAILBOX.fullmatch(name):
+        raise ConnectorError("NOT_REMOVABLE", "Удалить можно только добавленный почтовый ящик")
+    with transaction(conn):
+        deleted = conn.execute("DELETE FROM connectors WHERE name = ?", (name,)).rowcount
+        if not deleted:
+            raise ConnectorError("NOT_FOUND", f"Нет подключения {name}")
+        audit(conn, "connector_removed", user_id, f"connector:{name}")
+
+
 def _load(conn: sqlite3.Connection, name: str) -> dict[str, Any]:
-    if name not in SPECS:
-        raise ConnectorError("NOT_FOUND", f"Нет подключения {name}")
+    spec_for(name)
     row = conn.execute("SELECT * FROM connectors WHERE name = ?", (name,)).fetchone()
     if row is None:
         return {
@@ -155,7 +204,8 @@ def apply_env_presets(
 
 
 def _public(record: dict[str, Any]) -> dict[str, Any]:
-    spec = SPECS[record["name"]]
+    spec = spec_for(record["name"])
+    mailbox = str(record["config"].get("user") or "").strip()
     config = {
         key: (
             "••••••"
@@ -165,8 +215,9 @@ def _public(record: dict[str, Any]) -> dict[str, Any]:
         for key in spec.fields
     }
     return {
-        "name": spec.name,
-        "title": spec.title,
+        "name": record["name"],
+        "title": f"Почта: {mailbox}" if spec.kind == "imap" and mailbox else spec.title,
+        "removable": bool(_EXTRA_MAILBOX.fullmatch(record["name"])),
         "kind": spec.kind,
         "fields": list(spec.fields),
         "contract": spec.contract,
@@ -179,14 +230,15 @@ def _public(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def list_connectors(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    return [_public(_load(conn, name)) for name in SPECS]
+    names = [*mailbox_names(conn), *(name for name in SPECS if name != "email")]
+    return [_public(_load(conn, name)) for name in names]
 
 
 def configure(
     conn: sqlite3.Connection, name: str, values: dict[str, Any], user_id: int
 ) -> dict[str, Any]:
     record = _load(conn, name)
-    spec = SPECS[name]
+    spec = spec_for(name)
     config = dict(record["config"])
     for key in spec.fields:
         if key in values:
@@ -245,7 +297,7 @@ def _join(base: str, path: str) -> str:
 
 def check(conn: sqlite3.Connection, name: str, user_id: int) -> dict[str, Any]:
     record = _load(conn, name)
-    spec = SPECS[name]
+    spec = spec_for(name)
     config = record["config"]
     if not all(config.get(key) for key in _required(spec)):
         raise ConnectorError("NOT_CONFIGURED", "Сначала заполните параметры подключения")
@@ -277,6 +329,36 @@ def check(conn: sqlite3.Connection, name: str, user_id: int) -> dict[str, Any]:
     return _public(_load(conn, name))
 
 
+def imap_folder(name: str) -> str:
+    """Имя папки в «modified UTF-7» (RFC 3501): так IMAP-серверы хранят «Заявки» и т. п.
+
+    ASCII-символы остаются как есть («&» → «&-»), остальные — base64 от UTF-16BE
+    между «&» и «-», с «,» вместо «/». Уже закодированное имя не меняется.
+    """
+    out: list[str] = []
+    run: list[str] = []
+
+    def flush() -> None:
+        if run:
+            encoded = base64.b64encode("".join(run).encode("utf-16-be")).decode("ascii")
+            out.append("&" + encoded.rstrip("=").replace("/", ",") + "-")
+            run.clear()
+
+    for char in name:
+        if 0x20 <= ord(char) <= 0x7E:
+            flush()
+            out.append("&-" if char == "&" and not _is_utf7(name) else char)
+        else:
+            run.append(char)
+    flush()
+    return "".join(out)
+
+
+def _is_utf7(name: str) -> bool:
+    """Имя уже в modified UTF-7 (например, скопировано из списка папок сервера)."""
+    return name.isascii() and "&" in name and "-" in name.split("&", 1)[1]
+
+
 def _imap(config: dict[str, Any]) -> imaplib.IMAP4:
     port = int(config.get("port") or 993)
     client: imaplib.IMAP4 = (
@@ -285,7 +367,8 @@ def _imap(config: dict[str, Any]) -> imaplib.IMAP4:
         else imaplib.IMAP4(config["host"], port, timeout=TIMEOUT)
     )
     client.login(config["user"], config["password"])
-    status, _ = client.select(config.get("folder") or "INBOX", readonly=True)
+    folder = imap_folder(str(config.get("folder") or "INBOX"))
+    status, _ = client.select(f'"{folder}"', readonly=True)
     if status != "OK":
         raise ConnectorError("CHECK_FAILED", "папка недоступна")
     return client
@@ -396,7 +479,7 @@ def import_messages(
         raise ConnectorError("NOT_READY", "Подключение не проверено — сначала «Проверить»")
     config = record["config"]
     items: list[dict[str, Any]] = []
-    if name == "email":
+    if is_mailbox(name):
         client = _imap(config)
         try:
             _, data = client.search(None, "ALL")
@@ -416,7 +499,7 @@ def import_messages(
     else:
         raise ConnectorError("NOT_SUPPORTED", "Импорт заявок есть только для почты и Telegram")
     # Ящик, в который пришло письмо: по нему в списке заявок строятся вкладки.
-    inbox = str(config.get("user") or "").strip().lower() if name == "email" else None
+    inbox = str(config.get("user") or "").strip().lower() if is_mailbox(name) else None
     return _store_imported(conn, store, name, items, user_id, inbox or None)
 
 

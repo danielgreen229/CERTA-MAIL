@@ -85,6 +85,19 @@ export interface LeadDetail extends LeadSummary {
   history: Array<Record<string, unknown> & { type: string; at: string }>
   knowledge: { results: KbHit[]; conflicts: string[] }
   shipments: Array<{ number: string; data?: Record<string, unknown>; error?: string; source: string; fetched_at: string }>
+  reply: { available: boolean; reason: string | null; to: string | null; from: string | null; subject: string }
+  replies: SentReply[]
+}
+
+export interface SentReply {
+  id: number
+  to: string
+  subject: string | null
+  body: string
+  status: 'sent' | 'failed'
+  error: string | null
+  user: string
+  at: string
 }
 
 export interface Job {

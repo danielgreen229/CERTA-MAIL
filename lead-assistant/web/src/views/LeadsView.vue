@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api, ApiError, CATEGORY, PRIORITY, formatDate, type Job, type LeadSummary } from '../api'
 import FolderNav, { type FolderFilter, type SourceTab } from '../components/FolderNav.vue'
 import LeadCard from '../components/LeadCard.vue'
+import { chime, soundOn, systemNotice, toggleSound } from '../notify'
 
 interface ListResponse {
   leads: LeadSummary[]
@@ -43,7 +44,9 @@ async function load(silent = false) {
   error.value = ''
   const params = new URLSearchParams(Object.entries(filters).filter(([, v]) => v))
   try {
-    data.value = await api.get<ListResponse>(`/api/leads?${params}`)
+    const next = await api.get<ListResponse>(`/api/leads?${params}`)
+    announce(next.counts.total)
+    data.value = next
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : 'Не удалось загрузить заявки'
   } finally {
@@ -89,19 +92,61 @@ const jobPercent = computed(() => {
   return p && p.total ? Math.round(((p.done ?? 0) / p.total) * 100) : 0
 })
 
+// --- новые письма: автообновление, звук, уведомление ---
+const toast = ref('')
+let knownTotal: number | null = null
+let toastTimer: number | undefined
+let ticks = 0
+
+function announce(total: number) {
+  if (knownTotal !== null && total > knownTotal) {
+    const fresh = total - knownTotal
+    const word = fresh === 1 ? 'новое письмо' : fresh < 5 ? 'новых письма' : 'новых писем'
+    toast.value = `Пришло ${fresh} ${word}`
+    window.clearTimeout(toastTimer)
+    toastTimer = window.setTimeout(() => (toast.value = ''), 8000)
+    chime()
+    systemNotice('Почта', toast.value)
+  }
+  knownTotal = total
+  const waiting = (data.value?.counts.new ?? 0) + (data.value?.counts.pending ?? 0)
+  document.title = waiting ? `(${waiting}) Почта — помощник менеджера` : 'Почта — помощник менеджера'
+}
+
+// --- выгрузка ---
+const exportFormat = ref('')
+function exportList() {
+  if (!exportFormat.value) return
+  const params = new URLSearchParams(Object.entries(filters).filter(([, v]) => v))
+  params.set('format', exportFormat.value)
+  window.location.href = `/api/leads/export?${params}`
+  exportFormat.value = ''
+}
+
+function onKey(event: KeyboardEvent) {
+  if (event.key === 'Escape' && selected.value) close()
+}
+
 onMounted(() => {
   load()
-  // Пока идёт фоновая обработка, список обновляется сам; закрытие страницы её не прерывает.
+  window.addEventListener('keydown', onKey)
+  // Список обновляется сам: каждые 4 с во время обработки, иначе раз в 15 с —
+  // так видно новые письма, которые фоновая проверка забрала из ящиков.
   timer = window.setInterval(() => {
-    if (job.value) load(true)
+    ticks += 1
+    if (job.value || ticks % 4 === 0) load(true)
   }, 4000)
 })
-onUnmounted(() => window.clearInterval(timer))
+onUnmounted(() => {
+  window.clearInterval(timer)
+  window.removeEventListener('keydown', onKey)
+  document.title = 'Почта — помощник менеджера'
+})
 </script>
 
 <template>
   <main class="page">
-    <div class="layout" :class="{ 'with-card': selected }">
+    <div class="layout">
       <aside class="folder-pane" :class="{ open: foldersOpen }">
         <FolderNav
           v-if="data"
@@ -124,10 +169,28 @@ onUnmounted(() => window.clearInterval(timer))
             >☰ Папки</button>
             <h1>Почта</h1>
           </div>
-          <button class="primary" :disabled="!!job" @click="startJob">
-            {{ job ? 'Обработка идёт…' : 'Обработать новые' }}
-          </button>
+          <div class="row tools">
+            <button
+              type="button"
+              class="icon-btn"
+              :title="soundOn ? 'Звук о новых письмах включён' : 'Звук о новых письмах выключен'"
+              :aria-label="soundOn ? 'Выключить звук о новых письмах' : 'Включить звук о новых письмах'"
+              :aria-pressed="soundOn"
+              @click="toggleSound"
+            >{{ soundOn ? '🔔' : '🔕' }}</button>
+            <select v-model="exportFormat" class="export" aria-label="Выгрузить список" @change="exportList">
+              <option value="">⤓ Выгрузить…</option>
+              <option value="json">JSON</option>
+              <option value="xlsx">Excel (.xlsx)</option>
+              <option value="docx">Word (.docx)</option>
+              <option value="pdf">PDF</option>
+            </select>
+            <button class="primary" :disabled="!!job" @click="startJob">
+              {{ job ? 'Обработка идёт…' : 'Обработать новые' }}
+            </button>
+          </div>
         </div>
+        <div v-if="toast" class="toast" role="status" @click="toast = ''">✉ {{ toast }}</div>
         <div v-if="jobError" class="alert error">{{ jobError }}</div>
         <div v-if="job" class="card job">
           <div class="row">
@@ -210,16 +273,17 @@ onUnmounted(() => window.clearInterval(timer))
           </li>
         </ul>
       </section>
-      <section v-if="selected" class="card-pane">
-        <LeadCard :lead-key="selected" @close="close" @changed="load(true)" />
-      </section>
+      <div v-if="selected" class="lead-modal" role="dialog" aria-modal="true" @click.self="close">
+        <div class="lead-dialog">
+          <LeadCard :lead-key="selected" @close="close" @changed="load(true)" />
+        </div>
+      </div>
     </div>
   </main>
 </template>
 
 <style scoped>
 .layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; }
-.layout.with-card { grid-template-columns: 200px minmax(300px, 2fr) 3fr; }
 .folder-pane { position: sticky; top: 64px; align-self: start; max-height: calc(100vh - 80px); overflow: auto; padding-top: 4px; }
 .folders-toggle { display: none; }
 .job { margin: 8px 0; }
@@ -235,26 +299,27 @@ onUnmounted(() => window.clearInterval(timer))
 .leads li:hover, .leads li:focus { border-color: var(--accent); outline: none; }
 .leads li.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .text { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; }
-.card-pane { position: sticky; top: 64px; align-self: start; max-height: calc(100vh - 80px); overflow: auto; }
-.with-card .filters { grid-template-columns: 1fr 1fr; }
-.with-card .filters input[type='search'] { grid-column: 1 / -1; }
+/* Письмо открывается во всплывающем окне поверх списка (Esc или клик по фону — закрыть). */
+.lead-modal {
+  position: fixed; inset: 0; z-index: 30; background: rgb(0 0 0 / 0.45);
+  display: grid; place-items: start center; padding: 32px 16px; overflow: auto;
+}
+.lead-dialog { width: min(1100px, 100%); }
+.lead-dialog :deep(.card) { box-shadow: 0 20px 48px rgb(0 0 0 / 0.25); }
+.tools { gap: 8px; }
+.icon-btn { width: 40px; padding: 0; font-size: 17px; }
+.export { width: auto; min-width: 150px; }
+.toast {
+  position: fixed; right: 20px; bottom: 20px; z-index: 40; cursor: pointer;
+  background: var(--accent); color: var(--on-accent); padding: 12px 16px; border-radius: 10px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.25); font-weight: 600;
+}
 @media (max-width: 1100px) {
   .filters { grid-template-columns: 1fr 1fr; }
   .filters input[type='search'] { grid-column: 1 / -1; }
 }
-/* Узкий экран или открыта карточка на среднем: папки прячутся за кнопкой «☰ Папки». */
-@media (max-width: 1280px) {
-  .layout.with-card { grid-template-columns: minmax(300px, 2fr) 3fr; }
-  .with-card .folder-pane { display: none; }
-  .with-card .folder-pane.open {
-    display: block; position: fixed; z-index: 20; top: 56px; left: 0; bottom: 0; width: 260px;
-    max-height: none; background: var(--surface); border-right: 1px solid var(--line); padding: 12px;
-    box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
-  }
-  .with-card .folders-toggle { display: inline-flex; }
-}
 @media (max-width: 900px) {
-  .layout, .layout.with-card { grid-template-columns: 1fr; }
+  .layout { grid-template-columns: 1fr; }
   .folder-pane { display: none; }
   .folder-pane.open {
     display: block; position: fixed; z-index: 20; top: 56px; left: 0; bottom: 0; width: min(280px, 85vw);
@@ -262,7 +327,7 @@ onUnmounted(() => window.clearInterval(timer))
     box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
   }
   .folders-toggle { display: inline-flex; }
-  .layout.with-card .list-pane { display: none; }
-  .card-pane { position: static; max-height: none; }
+  .lead-modal { padding: 0; }
+  .tools { flex-wrap: wrap; }
 }
 </style>

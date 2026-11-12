@@ -35,6 +35,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     },
     "model": {"backend": "local", "model": "", "build": "", "llm_url": ""},
     "schedule": {"enabled": False, "interval_minutes": 60},
+    # Фоновая проверка подключённых ящиков и Telegram; новые письма сразу разбирает агент.
+    "mail_check": {"enabled": True, "interval_seconds": 60, "auto_process": True},
 }
 
 

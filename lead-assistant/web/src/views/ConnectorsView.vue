@@ -14,6 +14,7 @@ interface Connector {
   checked_at: string | null
   detail: string | null
   test_service: boolean
+  removable: boolean
 }
 
 const items = ref<Connector[]>([])
@@ -33,6 +34,7 @@ const FIELD: Record<string, string> = {
   bot_token: 'Токен бота', api_base: 'Адрес Bot API (для тестового сервиса)', base_url: 'Базовый адрес',
   api_key: 'Ключ API', health_path: 'Путь проверки', lead_path: 'Путь заявки', status_path: 'Путь статуса',
   quote_path: 'Путь расчёта',
+  smtp_host: 'SMTP-сервер для ответов (пусто — из IMAP: imap.* → smtp.*)', smtp_port: 'SMTP-порт (по умолчанию 465)',
 }
 
 async function load() {
@@ -75,10 +77,36 @@ async function check(c: Connector) {
 
 async function importNow(c: Connector) {
   try {
-    const res = await api.post<{ imported: number; skipped: number }>(`/api/connectors/${c.name}/import`)
-    messages.value[c.name] = { kind: 'ok', text: `Импортировано заявок: ${res.imported}, пропущено повторов: ${res.skipped}` }
+    const res = await api.post<{ imported: number; skipped: number; ids: Array<string | number> }>(`/api/connectors/${c.name}/import`)
+    const text = res.imported
+      ? `Импортировано писем: ${res.imported} (№ ${res.ids.join(', ')}). Агент разберёт их автоматически — см. «Почта».`
+      : res.skipped
+        ? `Новых писем нет: все ${res.skipped} уже были импортированы раньше и лежат в «Почте».`
+        : 'В ящике нет писем.'
+    messages.value[c.name] = { kind: 'ok', text }
   } catch (e) {
     messages.value[c.name] = { kind: 'error', text: e instanceof ApiError ? e.message : 'Импорт не выполнен' }
+  }
+}
+
+async function addMailbox() {
+  try {
+    const created = await api.post<Connector>('/api/connectors')
+    await load()
+    edit(items.value.find((c) => c.name === created.name) ?? created)
+    messages.value[created.name] = { kind: 'ok', text: 'Новый ящик: заполните параметры, сохраните и нажмите «Проверить».' }
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : 'Не удалось добавить ящик'
+  }
+}
+
+async function remove(c: Connector) {
+  if (!window.confirm(`Удалить подключение «${c.title}»? Уже импортированные письма останутся.`)) return
+  try {
+    await api.del(`/api/connectors/${c.name}`)
+    await load()
+  } catch (e) {
+    messages.value[c.name] = { kind: 'error', text: e instanceof ApiError ? e.message : 'Не удалось удалить' }
   }
 }
 
@@ -87,10 +115,14 @@ onMounted(load)
 
 <template>
   <main class="page">
-    <h1>Подключения</h1>
+    <div class="row" style="justify-content: space-between">
+      <h1>Подключения</h1>
+      <button v-if="can('admin')" class="primary" @click="addMailbox">+ Добавить почтовый ящик</button>
+    </div>
     <p class="muted small">
-      Внешние системы включаются после ввода параметров и успешной проверки. Без них приложение работает с локальным
-      файлом заявок. Отправка ответов клиентам в этой версии не выполняется.
+      Внешние системы включаются после ввода параметров и успешной проверки. Подключённые ящики и Telegram
+      проверяются автоматически раз в минуту, новые письма сразу разбирает агент. Ответ клиенту уходит с того
+      ящика, в который пришло письмо, — только по кнопке «Отправить ответ» в письме.
     </p>
     <div v-if="loading" class="empty"><span class="spinner"></span> Загрузка…</div>
     <div v-else-if="error" class="alert error">{{ error }} <button @click="load">Повторить</button></div>
@@ -123,8 +155,9 @@ onMounted(load)
           <button v-if="can('admin')" @click="edit(c)">Параметры</button>
           <button v-if="can('admin')" :disabled="c.state === 'not_configured'" @click="check(c)">Проверить</button>
           <button v-if="can('supervisor') && (c.kind === 'imap' || c.kind === 'telegram')" :disabled="c.state !== 'ok'" @click="importNow(c)">
-            Импортировать заявки
+            Проверить почту сейчас
           </button>
+          <button v-if="can('admin') && c.removable" class="danger" @click="remove(c)">Удалить</button>
         </div>
       </section>
     </div>

@@ -128,13 +128,51 @@ function show(item: Found): string {
 }
 
 const actionTitle: Record<string, string> = { accept: 'Принято', correct: 'Исправлено', reject: 'Отклонено' }
+
+// --- ответ клиенту ---
+const replyText = ref('')
+const sending = ref(false)
+const alreadySent = computed(() => (lead.value?.replies ?? []).some((r) => r.status === 'sent'))
+watch(
+  () => [props.leadKey, current.value?.draft_reply] as const,
+  () => {
+    replyText.value = current.value?.draft_reply ?? ''
+  },
+  { immediate: true },
+)
+
+async function sendReply() {
+  const l = lead.value
+  if (!l || !replyText.value.trim()) return
+  const again = alreadySent.value
+  const question = again
+    ? `Ответ этому клиенту уже отправлялся. Отправить ещё раз на ${l.reply.to}?`
+    : `Отправить ответ на ${l.reply.to}?`
+  if (!window.confirm(question)) return
+  sending.value = true
+  actionError.value = ''
+  notice.value = ''
+  try {
+    const res = await api.post<{ lead: LeadDetail }>(`${leadUrl(props.leadKey)}/reply`, { text: replyText.value, force: again })
+    lead.value = res.lead
+    notice.value = `Ответ отправлен на ${res.lead.reply.to}`
+    emit('changed')
+  } catch (e) {
+    actionError.value = e instanceof ApiError ? e.message : 'Не удалось отправить ответ'
+    await load()
+  } finally {
+    sending.value = false
+  }
+}
+
+const channelTitle: Record<string, string> = { email: 'Почта', telegram: 'Telegram' }
 </script>
 
 <template>
   <article class="card">
     <div class="row" style="justify-content: space-between">
-      <h2>Заявка № {{ leadKey.replace(/"/g, '') }}</h2>
-      <button aria-label="Закрыть" @click="emit('close')">✕ Закрыть</button>
+      <h2>Письмо № {{ leadKey.replace(/"/g, '') }}</h2>
+      <button aria-label="Закрыть" title="Закрыть (Esc)" @click="emit('close')">✕ Закрыть</button>
     </div>
     <div v-if="loading" class="empty"><span class="spinner"></span> Загрузка…</div>
     <div v-else-if="error" class="alert error">{{ error }} <button @click="load">Повторить</button></div>
@@ -155,10 +193,18 @@ const actionTitle: Record<string, string> = { accept: 'Принято', correct:
       <div class="cols">
         <section>
           <h3>Исходное обращение</h3>
-          <div class="small muted">
-            {{ lead.lead.name }} · {{ lead.lead.contact || 'контакт не указан' }} · {{ lead.lead.channel }} ·
-            {{ formatDate(String(lead.lead.date ?? '')) }}
-          </div>
+          <dl class="headers small">
+            <dt>От</dt>
+            <dd>{{ lead.lead.name }} <span class="muted">&lt;{{ lead.lead.contact || 'контакт не указан' }}&gt;</span></dd>
+            <template v-if="lead.lead.inbox">
+              <dt>Кому</dt>
+              <dd>{{ lead.lead.inbox }}</dd>
+            </template>
+            <dt>Канал</dt>
+            <dd>{{ channelTitle[String(lead.lead.channel)] ?? lead.lead.channel }}</dd>
+            <dt>Дата</dt>
+            <dd>{{ formatDate(String(lead.lead.date ?? '')) }}</dd>
+          </dl>
           <pre class="source">{{ lead.lead.text }}</pre>
 
           <h3>Извлечённые сведения</h3>
@@ -268,6 +314,36 @@ const actionTitle: Record<string, string> = { accept: 'Принято', correct:
             </div>
           </form>
 
+          <section class="reply">
+            <h3>Ответ клиенту</h3>
+            <template v-if="lead.reply.available">
+              <div class="small muted">
+                Кому: <b>{{ lead.reply.to }}</b> · от: {{ lead.reply.from }} · тема: {{ lead.reply.subject }}
+              </div>
+              <textarea
+                v-model="replyText"
+                class="reply-text"
+                rows="6"
+                aria-label="Текст ответа"
+                placeholder="Текст ответа клиенту"
+              ></textarea>
+              <div class="row actions">
+                <button class="primary" :disabled="sending || !replyText.trim()" @click="sendReply">
+                  {{ sending ? 'Отправка…' : alreadySent ? 'Отправить ещё раз' : 'Отправить ответ' }}
+                </button>
+                <span v-if="current && replyText !== (current.draft_reply ?? '')" class="small muted">изменён относительно черновика</span>
+              </div>
+            </template>
+            <div v-else class="small muted">{{ lead.reply.reason }}</div>
+            <ul v-if="lead.replies.length" class="sent small">
+              <li v-for="r in lead.replies" :key="r.id" :class="r.status">
+                <b>{{ r.status === 'sent' ? '✓ Отправлено' : '✕ Не отправлено' }}</b>
+                {{ formatDate(r.at) }} · {{ r.user }} → {{ r.to }}
+                <div v-if="r.error" class="err">{{ r.error }}</div>
+              </li>
+            </ul>
+          </section>
+
           <div class="small" style="margin-top: 10px">
             <b>Ответственный:</b> {{ lead.assignee || 'не назначен' }} ·
             <b>Срок реакции:</b> <span :class="{ late: lead.overdue }">{{ formatDate(lead.due_at) }}</span>
@@ -313,6 +389,14 @@ const actionTitle: Record<string, string> = { accept: 'Принято', correct:
 
 <style scoped>
 .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.headers { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0 0 8px; }
+.headers dt { color: var(--muted); }
+.headers dd { margin: 0; overflow-wrap: anywhere; }
+.reply { margin-top: 14px; padding-top: 4px; border-top: 1px solid var(--line); }
+.reply-text { width: 100%; margin-top: 6px; resize: vertical; min-height: 120px; }
+.sent { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 4px; }
+.sent li.sent b { color: var(--ok); }
+.sent li.failed b, .sent .err { color: var(--danger); }
 .source, .draft { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
 .actions { margin-top: 10px; }
 .sub { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 6px; }

@@ -284,3 +284,14 @@ def test_env_presets_configure_and_check_but_never_override_admin(tmp_path: Path
     finally:
         conn.close()
         server.shutdown()
+
+
+def test_imap_folder_names_are_encoded_like_mail_ru_lists_them() -> None:
+    # Ожидаемые значения взяты из списка папок реального ящика Mail.ru.
+    assert connectors.imap_folder("Заявки") == "&BBcEMARPBDIEOgQ4-"
+    assert connectors.imap_folder("Отправленные") == "&BB4EQgQ,BEAEMAQyBDsENQQ9BD0ESwQ1-"
+    assert connectors.imap_folder("INBOX") == "INBOX"
+    assert connectors.imap_folder("INBOX/Public services") == "INBOX/Public services"
+    assert connectors.imap_folder("R&D Заявки") == "R&-D &BBcEMARPBDIEOgQ4-"
+    # Уже закодированное имя (скопировано из списка папок) не кодируется повторно.
+    assert connectors.imap_folder("&BBcEMARPBDIEOgQ4-") == "&BBcEMARPBDIEOgQ4-"
