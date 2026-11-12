@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Certa · ИИ-помощник по заявкам</title>
+  <meta name="description" content="Агент разбирает новые заявки логистической компании: категория, приоритет, черновик ответа на языке клиента. Локальная модель, данные не покидают сервер." />
+  <link rel="icon" href="assets/mark.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@300;500;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=2" />
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+  </script>
+</head>
+<body>
+  <!-- Прелоадер -->
+  <div class="preloader" id="preloader">
+    <div class="preloader__mark"><img src="assets/mark.svg" alt="" /></div>
+    <div class="preloader__count"><span id="preCount">0</span>%</div>
+    <div class="preloader__bar"><i id="preBar"></i></div>
+  </div>
+
+  <canvas id="gl" aria-hidden="true"></canvas>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="progress" aria-hidden="true"><i id="progress"></i></div>
+  <div class="cursor" aria-hidden="true"><i class="cursor__dot"></i><i class="cursor__ring"></i></div>
+
+  <header class="nav">
+    <a href="#top" class="nav__brand" data-magnetic>
+      <img src="assets/mark.svg" alt="" width="28" height="28" />
+      <span>Certa<em>Leads</em></span>
+    </a>
+    <nav class="nav__links">
+      <a href="#features">Возможности</a>
+      <a href="#pipeline">Как работает</a>
+      <a href="#numbers">Цифры</a>
+      <a href="#video">Видео</a>
+    </nav>
+    <a href="#start" class="btn btn--small" data-magnetic><span>Запустить</span></a>
+  </header>
+
+  <main id="top">
+    <!-- HERO -->
+    <section class="hero" data-shape="0" data-hue="0">
+      <div class="hero__video media-bg" data-video="media/00-hero.mp4"></div>
+      <div class="hero__inner">
+        <p class="eyebrow reveal-up"><span class="pulse"></span> ИИ-помощник менеджера по заявкам</p>
+        <h1 class="hero__title split-chars">
+          <span class="line">Заявки</span>
+          <span class="line">разобраны<span class="accent">.</span></span>
+          <span class="line line--outline">Ответ — за вами</span>
+        </h1>
+        <p class="hero__lead reveal-up">Агент читает новые обращения логистической компании, ставит категорию и&nbsp;приоритет, готовит черновик на языке клиента. Отправляет менеджер.</p>
+        <div class="hero__cta reveal-up">
+          <a href="#start" class="btn" data-magnetic><span>docker compose up -d</span></a>
+          <a href="#features" class="btn btn--ghost" data-magnetic><span>Смотреть возможности</span></a>
+        </div>
+      </div>
+      <div class="hero__scroll"><span>листайте</span><i></i></div>
+      <div class="hero__float hero__float--a" data-depth="0.6"><b>high</b> «нужно сегодня до 18:00»</div>
+      <div class="hero__float hero__float--b" data-depth="-0.4"><b>update_lead</b> ✓ processed</div>
+      <div class="hero__float hero__float--c" data-depth="0.9"><b>Qwen3-14B</b> · локально</div>
+    </section>
+
+    <!-- Бегущая строка -->
+    <div class="marquee" aria-hidden="true">
+      <div class="marquee__track">
+        <span>Qwen3</span><i>✦</i><span>llama.cpp</span><i>✦</i><span>MCP</span><i>✦</i><span>Docker</span><i>✦</i><span>Telegram</span><i>✦</i><span>SMTP / IMAP</span><i>✦</i><span>Claude Code</span><i>✦</i><span>Vue</span><i>✦</i>
+        <span>Qwen3</span><i>✦</i><span>llama.cpp</span><i>✦</i><span>MCP</span><i>✦</i><span>Docker</span><i>✦</i><span>Telegram</span><i>✦</i><span>SMTP / IMAP</span><i>✦</i><span>Claude Code</span><i>✦</i><span>Vue</span><i>✦</i>
+      </div>
+    </div>
+
+    <!-- Манифест: слова загораются по скроллу -->
+    <section class="manifest" data-shape="1" data-hue="0.2">
+      <p class="manifest__text scrub-words">Утром во входящих сорок новых заявок. Кому-то груз нужен сегодня, кто-то пишет на казахском, кто-то жалуется вежливым вопросом. Помощник разбирает их до того, как менеджер откроет почту, и честно помечает то, в чём не уверен.</p>
+    </section>
+
+    <!-- Возможности -->
+    <section id="features" class="features">
+      <header class="section-head">
+        <span class="section-head__num">01—08</span>
+        <h2 class="split-words">Что умеет помощник</h2>
+      </header>
+
+      <article class="feature" data-shape="0" data-hue="0">
+        <div class="feature__text">
+          <span class="feature__num">01</span>
+          <h3 class="split-words">Разбор каждой заявки</h3>
+          <p>Категория, приоритет и черновик ответа на языке клиента. Рядом — дословные цитаты, на которых держится решение, и следующий шаг для менеджера.</p>
+          <ul class="chips"><li>категория</li><li>high · medium · low</li><li>черновик</li><li>следующий шаг</li></ul>
+        </div>
+        <div class="feature__media"><div class="frame" data-tilt><div class="frame__inner" data-video="media/01-triage.mp4" data-label="Разбор заявки"></div><div class="frame__glare"></div></div></div>
+      </article>
+
+      <article class="feature feature--flip" data-shape="2" data-hue="0.55">
+        <div class="feature__text">
+          <span class="feature__num">02</span>
+          <h3 class="split-words">Своя модель, свой сервер</h3>
+          <p>Открытая Qwen3 на llama.cpp. Без регистрации, ключей и интернета во время работы — данные клиентов не покидают сервер. Модель выбирается при запуске.</p>
+          <ul class="chips"><li>Qwen3-14B · GPU</li><li>Qwen3-8B · CPU</li><li>Ollama · LM Studio · vLLM</li></ul>
+        </div>
+        <div class="feature__media"><div class="frame" data-tilt><div class="frame__inner" data-video="media/02-local-model.mp4" data-label="Локальная модель"></div><div class="frame__glare"></div></div></div>
+      </article>
+
+      <article class="feature" data-shape="3" data-hue="0.3">
+        <div class="feature__text">
+          <span class="feature__num">03</span>
+          <h3 class="split-words">Три инструмента — и всё</h3>
+          <p>Агент работает с заявками только через MCP: <code>list_leads</code>, <code>get_lead</code>, <code>update_lead</code>. Тот же сервер подключается к Claude Code одной строкой.</p>
+          <ul class="chips"><li>MCP stdio</li><li>единый формат ошибок</li><li>трейс вызовов</li></ul>
+        </div>
+        <div class="feature__media"><div class="frame" data-tilt><div class="frame__inner" data-video="media/03-mcp-tools.mp4" data-label="MCP-инструменты"></div><div class="frame__glare"></div></div></div>
+      </article>
+
+      <article class="feature feature--flip" data-shape="4" data-hue="1">
+        <div class="feature__text">
+          <span class="feature__num">04</span>
+          <h3 class="split-words">Код проверяет модель</h3>
+          <p>Категорию и приоритет выводит код — из цитат, которые модель достала из заявки. Черновик с обещаниями и фактами не из заявки сервер не запишет. Спорное помечается <code>uncertain</code> с причиной.</p>
+          <ul class="chips"><li>цитаты-основания</li><li>защита от инъекций</li><li>uncertain</li></ul>
+        </div>
+        <div class="feature__media"><div class="frame" data-tilt><div class="frame__inner" data-video="media/04-guardrails.mp4" data-label="Проверка кодом"></div><div class="frame__glare"></div></div></div>
+      </article>
+
+      <article class="feature" data-shape="1" data-hue="0.15">
+        <div class="feature__text">
+          <span class="feature__num">05</span>
+          <h3 class="split-words">Запись, которая не теряет</h3>
+          <p>Блокировка между процессами, атомарная замена файла, конфликт возвращается явно. Повторный запуск безопасен: обработанные заявки не перезаписываются.</p>
+          <ul class="chips"><li>file lock</li><li>atomic replace</li><li>идемпотентность</li></ul>
+        </div>
+        <div class="feature__media"><div class="frame" data-tilt><div class="frame__inner" data-video="media/05-reliability.mp4" data-label="Надёжная запись"></div><div class="frame__glare"></div></div></div>
+      </article>
+
+      <article class="feature feature--flip" data-shape="2" data-hue="0.4">
+        <div class="feature__text">
+          <span class="feature__num">06</span>
+          <h3 class="split-words">Рабочее место менеджера</h3>
+          <p>Список с поиском и фильтрами, карточка заявки, «Принять / Исправить / Отклонить» с историей, очередь проверки, база знаний, роли и тёмная тема.</p>
+          <ul class="chips"><li>папки</li><li>история решений</li><li>база знаний</li><li>роли</li></ul>
+        </div>
+        <div class="feature__media"><div class="frame" data-tilt><div class="frame__inner" data-video="media/06-workspace.mp4" data-label="Рабочее место"></div><div class="frame__glare"></div></div></div>
+      </article>
+
+      <article class="feature" data-shape="3" data-hue="0.7">
+        <div class="feature__text">
+          <span class="feature__num">07</span>
+          <h3 class="split-words">Почта и Telegram</h3>
+          <p>Заявки приходят из ящиков и ботов сотрудников — сколько угодно. Ответ уходит тем же каналом: письмом или через бота, с понятной причиной, если не ушёл.</p>
+          <ul class="chips"><li>IMAP / SMTP</li><li>Telegram-боты</li><li>ответ из карточки</li></ul>
+        </div>
+        <div class="feature__media"><div class="frame" data-tilt><div class="frame__inner" data-video="media/07-channels.mp4" data-label="Каналы"></div><div class="frame__glare"></div></div></div>
+      </article>
+
+      <article class="feature feature--flip" data-shape="4" data-hue="0.9">
+        <div class="feature__text">
+          <span class="feature__num">08</span>
+          <h3 class="split-words">Качество в цифрах</h3>
+          <p>Набор из 18 примеров и разметка 15 реальных заявок. Каждый прогон оставляет трейс в <code>runs/</code>, а счётчики сводки сверяются с файлом.</p>
+          <ul class="chips"><li>evals synthetic</li><li>evals real</li><li>сводка = файл</li></ul>
+        </div>
+        <div class="feature__media"><div class="frame" data-tilt><div class="frame__inner" data-video="media/08-quality.mp4" data-label="Качество"></div><div class="frame__glare"></div></div></div>
+      </article>
+    </section>
+
+    <!-- Конвейер: горизонтальный скролл -->
+    <section id="pipeline" class="pipeline" data-shape="3" data-hue="0.5">
+      <div class="pipeline__sticky">
+        <header class="section-head section-head--inline">
+          <span class="section-head__num">путь заявки</span>
+          <h2 class="split-words">Семь шагов без ручной работы</h2>
+        </header>
+        <div class="pipeline__viewport">
+          <svg class="pipeline__line" preserveAspectRatio="none" viewBox="0 0 2000 120"><path id="pipePath" d="M0 60 C 150 0, 250 120, 400 60 S 650 0, 800 60 S 1050 120, 1200 60 S 1450 0, 1600 60 S 1850 120, 2000 60" /></svg>
+          <ol class="pipeline__track">
+            <li><span>1</span><b>Новая заявка</b><p>Почта, Telegram или файл <code>leads.json</code></p></li>
+            <li><span>2</span><b>list_leads</b><p>Агент берёт только новые, пачками по 5</p></li>
+            <li><span>3</span><b>Модель читает</b><p>Qwen3 достаёт дословные цитаты и язык клиента</p></li>
+            <li><span>4</span><b>Код решает</b><p>Категория и приоритет — из цитат, по правилам</p></li>
+            <li><span>5</span><b>Проверка черновика</b><p>Нет обещаний и фактов не из заявки</p></li>
+            <li><span>6</span><b>update_lead</b><p>Атомарная запись, статус <code>processed</code></p></li>
+            <li><span>7</span><b>Сводка</b><p>Срочные — сверху, спорные — «Проверить менеджеру»</p></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- Цифры -->
+    <section id="numbers" class="numbers" data-shape="1" data-hue="0.4">
+      <div class="numbers__grid">
+        <div class="stat"><b data-count="3">0</b><span>MCP-инструмента — весь доступ агента к данным</span></div>
+        <div class="stat"><b data-count="0">0</b><span>ключей и регистраций для запуска</span></div>
+        <div class="stat"><b data-count="2.8" data-decimals="1">0</b><span>минуты на 14 заявок · Qwen3-14B, GPU 16 ГБ</span></div>
+        <div class="stat"><b data-count="33">0</b><span>проверочных примера: 18 синтетических + 15 реальных</span></div>
+      </div>
+    </section>
+
+    <!-- Видеоинструкция -->
+    <section id="video" class="tutorial" data-shape="2" data-hue="0.6">
+      <header class="section-head">
+        <span class="section-head__num">видеоинструкция · 3:14</span>
+        <h2 class="split-words">Как работать в почте</h2>
+      </header>
+      <div class="tutorial__player">
+        <div class="frame tutorial__frame">
+          <video id="tutorial" src="media/certa-instrukciya.mp4" poster="media/certa-instrukciya.jpg" preload="none" playsinline></video>
+          <button class="tutorial__play" id="tutorialPlay" type="button" aria-label="Смотреть видеоинструкцию">
+            <i aria-hidden="true"></i><span>Смотреть · 3:14</span>
+          </button>
+        </div>
+        <p class="tutorial__note">Вход, папки и срочность, карточка письма, «Исправить» и «Принять», подключение почты и Telegram, база знаний и настройки. Со звуком и субтитрами.</p>
+      </div>
+    </section>
+
+    <!-- Запуск -->
+    <section id="start" class="start" data-shape="0" data-hue="1">
+      <div class="start__inner">
+        <h2 class="split-chars start__title"><span class="line">Одна</span><span class="line line--outline">команда</span></h2>
+        <div class="terminal" data-tilt>
+          <div class="terminal__bar"><i></i><i></i><i></i><span>lead-assistant — bash</span></div>
+          <pre class="terminal__body" id="terminal"></pre>
+        </div>
+        <p class="start__note">Рабочее место откроется на <code>http://127.0.0.1:8000</code>. Без Docker — <code>bash start.sh</code>.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer__big" aria-hidden="true">CERTA</div>
+    <div class="footer__row">
+      <span>ИИ-помощник менеджера по заявкам</span>
+      <span>Qwen3 · llama.cpp · MCP</span>
+      <a href="#top" data-magnetic>Наверх ↑</a>
+    </div>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js"></script>
+  <script type="module" src="main.js?v=2"></script>
+</body>
+</html>

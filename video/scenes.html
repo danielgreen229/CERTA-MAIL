@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<title>scenes</title>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Manrope:wght@500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+  :root { --bg:#070b12; --bg2:#0c1320; --navy:#25364f; --ice:#b8cbe8; --ink:#eef2f8; --muted:#8592a8; --red:#af2a35; --red-hi:#e0505c; --ok:#6fd3a4; --warn:#f0b85a; --line:rgba(184,203,232,.14); }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--ink); overflow:hidden; }
+  body { font-family: Manrope, system-ui, sans-serif; }
+  canvas { position:fixed; inset:0; width:100vw; height:100vh; }
+  .glow { position:fixed; inset:-20%; background:
+    radial-gradient(40% 50% at 20% 20%, rgba(175,42,53,.22), transparent 70%),
+    radial-gradient(45% 55% at 85% 80%, rgba(58,82,119,.35), transparent 70%); pointer-events:none; }
+  .stage { position:fixed; inset:0; display:grid; place-items:center; }
+  .term { width:78%; border-radius:22px; overflow:hidden; border:1px solid var(--line); background:rgba(12,19,32,.88);
+          box-shadow:0 60px 140px -40px rgba(175,42,53,.5); }
+  .bar { display:flex; gap:9px; align-items:center; padding:16px 22px; border-bottom:1px solid var(--line); font:500 15px 'JetBrains Mono', monospace; color:var(--muted); }
+  .bar i { width:13px; height:13px; border-radius:50%; background:#3a4558; } .bar i:first-child { background:var(--red-hi); }
+  .bar span { margin-left:auto; }
+  .body { padding:26px 30px; min-height:440px; font:400 21px/1.75 'JetBrains Mono', monospace; color:var(--ice); white-space:pre; }
+  .p { color:var(--red-hi); } .ok { color:var(--ok); } .dim { color:var(--muted); } .warn { color:var(--warn); } .b { color:var(--ink); font-weight:600; }
+  .err { color:#ff6b78; font-weight:600; }
+  .caret { display:inline-block; width:11px; height:1.05em; vertical-align:-.18em; background:var(--ice); animation:blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity:0 } }
+  .tag { position:fixed; left:5%; top:6%; font:700 20px Unbounded, sans-serif; letter-spacing:.04em; color:var(--muted); }
+  .tag b { color:var(--red-hi); }
+  .line { opacity:0; transform:translateY(8px); transition:opacity .35s, transform .35s; }
+  .line.on { opacity:1; transform:none; }
+  .fade { transition:opacity .6s; }
+</style>
+</head>
+<body>
+<div class="glow"></div>
+<canvas id="c"></canvas>
+<div class="stage" id="stage"></div>
+<script>
+const scene = new URLSearchParams(location.search).get('s') || 'hero';
+const stage = document.getElementById('stage');
+
+// ---------------- терминальные сцены (строки из реального прогона Qwen3-14B, 14 заявок) ----------------
+const TERM = {
+  local: { title: 'lead-assistant — сервер', tag: '<b>02</b> · своя модель', lines: [
+    ['p', '$ ', 'b', 'process-leads --model qwen3-14b --build cuda'],
+    ['dim', 'llama-server  загрузка Qwen3-14B-Q4_K_M.gguf  (SHA-256 ✓)'],
+    ['dim', 'llama-server  модель загружена · n_ctx 16384'],
+    ['ok', 'listening on http://127.0.0.1:58067'],
+    ['dim', 'prompt eval  1690 tok/s   ·   генерация  42 tok/s'],
+    ['', 'сеть: ', 'ok', 'только 127.0.0.1', '', '   ключи: ', 'ok', 'не нужны'],
+    ['ok', '✓ 14 заявок разобрано · 0 ошибок'],
+  ]},
+  mcp: { title: 'mcp_trace.jsonl', tag: '<b>03</b> · три инструмента', lines: [
+    ['p', '→ ', 'b', 'list_leads', '', '(status="new")          ', 'ok', '14 заявок'],
+    ['p', '→ ', 'b', 'get_lead', '', '(1)                         ', 'ok', 'ok'],
+    ['p', '→ ', 'b', 'update_lead', '', '(1, sale, medium)        ', 'ok', 'updated'],
+    ['p', '→ ', 'b', 'get_lead', '', '(2)                         ', 'ok', 'ok'],
+    ['p', '→ ', 'b', 'update_lead', '', '(2, complaint, high)     ', 'ok', 'updated'],
+    ['p', '→ ', 'b', 'get_lead', '', '(3)                         ', 'ok', 'ok'],
+    ['p', '→ ', 'b', 'update_lead', '', '(3, spam, low)           ', 'ok', 'updated'],
+    ['dim', '… других инструментов у агента нет'],
+  ]},
+  guard: { title: 'заявка № 9 · двойное списание', tag: '<b>04</b> · код проверяет модель', lines: [
+    ['dim', 'цитата: «С моей карты дважды списали оплату за один заказ (№4630)»'],
+    ['', 'код: категория ', 'b', 'complaint', '', ' · приоритет ', 'err', 'high'],
+    ['p', '→ ', 'b', 'update_lead', '', '(9, complaint, high, черновик 204 зн.)'],
+    ['err', '✗ DRAFT_POLICY', 'dim', '  утверждение, которого нет в заявке'],
+    ['dim', '  модель переписывает черновик…'],
+    ['p', '→ ', 'b', 'update_lead', '', '(9, complaint, high, черновик 221 зн.)'],
+    ['ok', '✓ updated', 'dim', '   до файла дошёл только проверенный текст'],
+  ]},
+  reliab: { title: 'leads.json — запись', tag: '<b>05</b> · запись, которая не теряет', lines: [
+    ['dim', 'lock   leads.json.lock          ', 'ok', 'захвачен'],
+    ['dim', 'read   перечитать под блокировкой ', 'ok', 'ok'],
+    ['dim', 'write  временный файл → fsync     ', 'ok', 'ok'],
+    ['dim', 'swap   os.replace → fsync каталога', 'ok', ' ok'],
+    ['p', '$ ', 'b', 'process-leads', 'dim', '   # повторный запуск'],
+    ['p', '→ ', 'b', 'list_leads', '', '(status="new")   ', 'ok', '0 — новых нет'],
+    ['ok', '✓ обработанные заявки не перезаписаны'],
+  ]},
+};
+
+function term(cfg) {
+  stage.innerHTML = `<div class="tag">${cfg.tag}</div><div class="term"><div class="bar"><i></i><i></i><i></i><span>${cfg.title}</span></div><div class="body" id="body"></div></div>`;
+  const body = document.getElementById('body');
+  const els = cfg.lines.map((parts) => {
+    const div = document.createElement('div');
+    div.className = 'line';
+    for (let i = 0; i < parts.length; i += 2) {
+      const s = document.createElement('span');
+      if (parts[i]) s.className = parts[i];
+      s.textContent = parts[i + 1];
+      div.appendChild(s);
+    }
+    body.appendChild(div);
+    return div;
+  });
+  const caret = document.createElement('span'); caret.className = 'caret';
+  // показываем по строке; цикл 10 с, совпадает с длиной ролика
+  const step = 900, start = 500;
+  els.forEach((el, i) => setTimeout(() => { el.classList.add('on'); el.appendChild(caret); }, start + i * step));
+  document.title = 'ready';
+}
+
+// ---------------- hero: поток заявок раскладывается по срочности ----------------
+function hero() {
+  const c = document.getElementById('c'); const g = c.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const W = innerWidth, H = innerHeight; c.width = W * dpr; c.height = H * dpr; g.scale(dpr, dpr);
+  const T = 10; // период, с — ролик зацикливается без шва
+  const lanes = [ { y: H * .3, col: '#e0505c' }, { y: H * .5, col: '#b8cbe8' }, { y: H * .7, col: '#3a5277' } ];
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const cards = Array.from({ length: 46 }, () => ({ ph: rnd(), lane: Math.floor(rnd() * 3), y0: H * (.12 + rnd() * .76), w: 70 + rnd() * 70, a: .35 + rnd() * .5, speed: 1 + Math.floor(rnd() * 2) }));
+  const ease = (x) => x < .5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3) / 2;
+  function rr(x, y, w, h, r) { g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); }
+  const t0 = performance.now();
+  function frame(now) {
+    const t = ((now - t0) / 1000) % T;
+    g.clearRect(0, 0, W, H);
+    // линии-дорожки
+    lanes.forEach((l) => { const grd = g.createLinearGradient(W*.45, 0, W, 0); grd.addColorStop(0, 'rgba(184,203,232,0)'); grd.addColorStop(1, l.col + '55'); g.strokeStyle = grd; g.lineWidth = 1; g.beginPath(); g.moveTo(W*.45, l.y); g.lineTo(W, l.y); g.stroke(); });
+    // центральный «фильтр»
+    const cx = W * .47;
+    g.strokeStyle = 'rgba(184,203,232,.18)'; g.setLineDash([4, 8]); g.beginPath(); g.moveTo(cx, H*.1); g.lineTo(cx, H*.9); g.stroke(); g.setLineDash([]);
+    cards.forEach((k) => {
+      const u = (t / T * k.speed + k.ph) % 1;          // 0..1 по экрану
+      const x = -160 + u * (W + 320);
+      const m = Math.min(1, Math.max(0, (x - cx + 220) / 440)); // переход на дорожку
+      const y = k.y0 + (lanes[k.lane].y - k.y0) * ease(m);
+      const col = m > .5 ? lanes[k.lane].col : '#b8cbe8';
+      g.globalAlpha = k.a * (m > .5 ? 1 : .55);
+      rr(x, y - 13, k.w, 26, 8); g.fillStyle = 'rgba(12,19,32,.9)'; g.fill(); g.strokeStyle = col; g.lineWidth = 1.2; g.stroke();
+      g.fillStyle = col; g.fillRect(x + 10, y - 3, k.w * .45, 3); g.globalAlpha *= .6; g.fillRect(x + 10, y + 4, k.w * .3, 2);
+      if (m > .5) { g.globalAlpha = k.a; g.beginPath(); g.arc(x + k.w - 12, y, 3.5, 0, 7); g.fillStyle = col; g.fill(); }
+    });
+    g.globalAlpha = 1;
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  document.title = 'ready';
+}
+
+document.fonts.ready.then(() => (scene === 'hero' ? hero() : term(TERM[scene])));
+</script>
+</body>
+</html>
