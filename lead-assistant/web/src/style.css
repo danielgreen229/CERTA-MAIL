@@ -1,114 +1,226 @@
+@import '@fontsource-variable/golos-text';
+
+/*
+ * Дизайн-система Certa.
+ * Синий из логотипа — текст и основные действия; красный знак-маршрут — только срочное
+ * и непрочитанное. Холодный светлый фон, белые поверхности, спокойные линии.
+ */
 :root {
-  --bg: #f5f6f8;
+  --brand-navy: #25364f;
+  --brand-red: #af2a35;
+  --logo-ink: #25364f;
+
+  --bg: #f4f6f9;
   --surface: #ffffff;
-  --text: #1c2430;
-  --muted: #5d6878;
-  --line: #dde2ea;
-  --accent: #1f5fbf;
-  --accent-soft: #e6eefb;
+  --surface-2: #f8f9fb;
+  --text: #1d2a3d;
+  --muted: #637087;
+  --line: #e3e7ed;
+  --line-strong: #cfd6df;
+  --accent: #25364f;
+  --accent-hover: #1a2739;
+  --accent-soft: #e9edf3;
   --on-accent: #ffffff;
-  --danger: #b42318;
-  --danger-soft: #fdecea;
+  --focus: #3c6fd1;
+  --danger: #af2a35;
+  --danger-soft: #fbecee;
   --warn: #8a5a00;
-  --warn-soft: #fff4d6;
-  --ok: #18794e;
-  --ok-soft: #e3f5ec;
-  --radius: 10px;
+  --warn-soft: #fdf3dc;
+  --ok: #1d7552;
+  --ok-soft: #e4f4ec;
+  --info: #2c5fb8;
+  --info-soft: #e8effc;
+
+  --radius-s: 8px;
+  --radius: 12px;
+  --radius-l: 16px;
+  --shadow: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.06);
+  --shadow-pop: 0 24px 60px rgb(16 24 40 / 0.22);
+  --sidebar: 15.5rem;
+  --topbar: 3.75rem;
   color-scheme: light;
 }
-/* Тёмная тема: явный выбор пользователя (data-theme="dark") или системная, если не выбрана светлая. */
+
+/* Тёмная тема: явный выбор (data-theme="dark") или системная, если не выбрана светлая. */
 :root[data-theme='dark'] {
-  --bg: #12161c;
-  --surface: #1b2129;
-  --text: #e6e9ee;
-  --muted: #9aa5b4;
-  --line: #2c3440;
-  --accent: #6ea2ff;
-  --accent-soft: #1e2b44;
-  --on-accent: #0b1220;
-  --danger: #ff8a80;
-  --danger-soft: #3a1f1f;
-  --warn: #ffcf66;
-  --warn-soft: #3a3020;
-  --ok: #6fd3a0;
-  --ok-soft: #173326;
+  --logo-ink: #e7ecf3;
+  --bg: #0f1520;
+  --surface: #172030;
+  --surface-2: #1b2638;
+  --text: #e5eaf1;
+  --muted: #95a1b4;
+  --line: #263246;
+  --line-strong: #34425a;
+  --accent: #9fb6d9;
+  --accent-hover: #b8cbe8;
+  --accent-soft: #22324a;
+  --on-accent: #0f1520;
+  --focus: #7fa6ef;
+  --brand-red: #e0505c;
+  --danger: #ff8b94;
+  --danger-soft: #3a1d24;
+  --warn: #f2c66b;
+  --warn-soft: #362c18;
+  --ok: #72d3a5;
+  --ok-soft: #15322a;
+  --info: #8db4ff;
+  --info-soft: #1c2c4a;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-pop: 0 24px 60px rgb(0 0 0 / 0.55);
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg: #12161c;
-    --surface: #1b2129;
-    --text: #e6e9ee;
-    --muted: #9aa5b4;
-    --line: #2c3440;
-    --accent: #6ea2ff;
-    --accent-soft: #1e2b44;
-  --on-accent: #0b1220;
-    --danger: #ff8a80;
-    --danger-soft: #3a1f1f;
-    --warn: #ffcf66;
-    --warn-soft: #3a3020;
-    --ok: #6fd3a0;
-    --ok-soft: #173326;
+    --logo-ink: #e7ecf3;
+    --bg: #0f1520;
+    --surface: #172030;
+    --surface-2: #1b2638;
+    --text: #e5eaf1;
+    --muted: #95a1b4;
+    --line: #263246;
+    --line-strong: #34425a;
+    --accent: #9fb6d9;
+    --accent-hover: #b8cbe8;
+    --accent-soft: #22324a;
+    --on-accent: #0f1520;
+    --focus: #7fa6ef;
+    --brand-red: #e0505c;
+    --danger: #ff8b94;
+    --danger-soft: #3a1d24;
+    --warn: #f2c66b;
+    --warn-soft: #362c18;
+    --ok: #72d3a5;
+    --ok-soft: #15322a;
+    --info: #8db4ff;
+    --info-soft: #1c2c4a;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-pop: 0 24px 60px rgb(0 0 0 / 0.55);
     color-scheme: dark;
   }
 }
+
+/*
+ * Масштаб: до 1920 px — базовые 15 px; шире интерфейс растёт пропорционально
+ * (все размеры в rem), к 5000 px — примерно вдвое. Так большой экран заполнен
+ * тем же интерфейсом, а не пустыми полями по краям.
+ */
+html { font-size: 15px; }
+@media (min-width: 1920px) { html { font-size: calc(15px + (100vw - 1920px) * 0.005); } }
+@media (min-width: 5000px) { html { font-size: 30.4px; } }
+@media (max-width: 480px) { html { font-size: 14.5px; } }
+
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text); }
-body { font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-a { color: var(--accent); }
-h1 { font-size: 22px; margin: 0 0 12px; }
-h2 { font-size: 17px; margin: 0 0 10px; }
-h3 { font-size: 15px; margin: 14px 0 6px; }
+body {
+  font-family: 'Golos Text Variable', 'Golos Text', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+a { color: var(--info); text-underline-offset: 2px; }
+h1 { font-size: 1.6rem; line-height: 1.2; font-weight: 650; letter-spacing: -0.01em; margin: 0; }
+h2 { font-size: 1.13rem; line-height: 1.3; font-weight: 620; margin: 0 0 0.6rem; }
+h3 { font-size: 0.95rem; line-height: 1.35; font-weight: 620; margin: 1.1rem 0 0.45rem; }
+p { margin: 0 0 0.6rem; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* --- Кнопки --- */
 button, input, select, textarea { font: inherit; color: inherit; }
 button {
-  border: 1px solid var(--line); background: var(--surface); border-radius: 8px;
-  padding: 7px 12px; cursor: pointer; min-height: 36px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem;
+  border: 1px solid var(--line-strong); background: var(--surface); color: var(--text);
+  border-radius: var(--radius-s); padding: 0.45rem 0.85rem; min-height: 2.5rem;
+  font-weight: 520; cursor: pointer; white-space: nowrap;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
-button:hover:not(:disabled) { border-color: var(--accent); }
-button:disabled { opacity: .55; cursor: default; }
+button:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-2); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
 button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-button.danger { color: var(--danger); border-color: var(--danger); }
-button.ok { color: var(--ok); border-color: var(--ok); }
-input, select, textarea {
-  border: 1px solid var(--line); background: var(--surface); border-radius: 8px;
-  padding: 7px 10px; min-height: 36px; width: 100%;
+button.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+button.danger:hover:not(:disabled) { background: var(--danger-soft); border-color: var(--danger); }
+button.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+button.ok:hover:not(:disabled) { background: var(--ok-soft); border-color: var(--ok); }
+button.ghost { border-color: transparent; background: transparent; }
+button.ghost:hover:not(:disabled) { background: var(--accent-soft); border-color: transparent; }
+button.icon-only { width: 2.5rem; padding: 0; }
+button.link {
+  border: 0; background: none; padding: 0; min-height: 0; color: var(--info);
+  text-decoration: underline; font-weight: 400;
 }
-textarea { min-height: 120px; resize: vertical; }
-label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 4px; }
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
+
+/* --- Поля --- */
+input, select, textarea {
+  border: 1px solid var(--line-strong); background: var(--surface); border-radius: var(--radius-s);
+  padding: 0.45rem 0.7rem; min-height: 2.5rem; width: 100%;
+}
+input:hover, select:hover, textarea:hover { border-color: var(--muted); }
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: 0.85; }
+textarea { min-height: 8rem; resize: vertical; line-height: 1.5; }
+input[type='checkbox'] { width: 1.05rem; height: 1.05rem; min-height: 0; accent-color: var(--accent); }
+label { display: block; font-size: 0.87rem; color: var(--muted); margin: 0.6rem 0 0.25rem; }
+
+/* --- Поверхности и текст --- */
+.card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.1rem 1.2rem; box-shadow: var(--shadow);
+}
 .muted { color: var(--muted); }
-.small { font-size: 13px; }
-.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.small { font-size: 0.87rem; }
+.row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
 .grow { flex: 1; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* --- Метки --- */
 .badge {
-  display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px;
+  display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.1rem 0.6rem;
+  border-radius: 99px; font-size: 0.8rem; font-weight: 550; line-height: 1.6;
   background: var(--accent-soft); color: var(--accent); white-space: nowrap;
 }
 .badge.high { background: var(--danger-soft); color: var(--danger); }
 .badge.medium { background: var(--warn-soft); color: var(--warn); }
 .badge.low { background: var(--ok-soft); color: var(--ok); }
-.badge.gray { background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
-.alert { padding: 10px 12px; border-radius: 8px; margin: 8px 0; }
+.badge.gray { background: var(--surface-2); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+.badge.info { background: var(--info-soft); color: var(--info); }
+
+/* --- Сообщения --- */
+.alert {
+  display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.7rem 0.9rem;
+  border-radius: var(--radius-s); margin: 0.6rem 0; line-height: 1.45;
+}
 .alert.error { background: var(--danger-soft); color: var(--danger); }
 .alert.warn { background: var(--warn-soft); color: var(--warn); }
 .alert.ok { background: var(--ok-soft); color: var(--ok); }
-.alert.info { background: var(--accent-soft); color: var(--accent); }
-.empty { padding: 28px; text-align: center; color: var(--muted); }
+.alert.info { background: var(--info-soft); color: var(--info); }
+.empty { padding: 2.5rem 1rem; text-align: center; color: var(--muted); }
 .spinner {
-  width: 18px; height: 18px; border: 2px solid var(--line); border-top-color: var(--accent);
-  border-radius: 50%; animation: spin .8s linear infinite; display: inline-block; vertical-align: middle;
+  width: 1.15rem; height: 1.15rem; border: 2px solid var(--line); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; vertical-align: middle;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-.progress { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; }
-.progress > div { height: 100%; background: var(--accent); transition: width .3s; }
+.progress { height: 0.5rem; background: var(--line); border-radius: 99px; overflow: hidden; }
+.progress > div { height: 100%; background: var(--accent); transition: width 0.3s; }
+
+/* --- Таблицы --- */
 table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { font-size: 13px; color: var(--muted); font-weight: 600; }
+th, td { text-align: left; padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 0.85rem; color: var(--muted); font-weight: 560; }
 pre { white-space: pre-wrap; word-break: break-word; margin: 0; font: inherit; }
-.quote { border-left: 3px solid var(--line); padding: 2px 10px; color: var(--muted); }
-.page { padding: 16px; max-width: 1400px; margin: 0 auto; }
+.quote { border-left: 3px solid var(--line-strong); padding: 0.1rem 0.7rem; color: var(--muted); }
+
+/* --- Страница --- */
+.page { padding: 1.5rem 1.75rem 2.5rem; max-width: 120rem; margin: 0 auto; }
+.page-head { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.page-head h1 { display: flex; align-items: center; gap: 0.6rem; }
+.page-head .lead { flex-basis: 100%; color: var(--muted); margin: 0.1rem 0 0; max-width: 60rem; }
+.page-head .actions { margin-left: auto; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
 @media (max-width: 720px) {
-  .page { padding: 10px; }
+  .page { padding: 1rem 0.85rem 2rem; }
   .hide-mobile { display: none !important; }
+  h1 { font-size: 1.35rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation-duration: 0.01ms !important; }
 }

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import smtplib
+import socket
 import sqlite3
 import ssl
 from email.message import EmailMessage
@@ -59,7 +60,9 @@ def smtp_endpoint(config: dict[str, Any]) -> tuple[str, int]:
 
 def _subject(lead: Lead) -> str:
     first = str(lead.get("text") or "").split("\n", 1)[0]
-    topic = first[len("Тема: ") :].strip() if first.startswith("Тема: ") else ""
+    topic = str(lead.get("subject") or "").strip() or (
+        first[len("Тема: ") :].strip() if first.startswith("Тема: ") else ""
+    )
     if not topic:
         return "Re: ваше обращение"
     return topic if topic.lower().startswith("re:") else f"Re: {topic}"
@@ -113,6 +116,31 @@ def sent_replies(conn: sqlite3.Connection, key: str) -> list[dict[str, Any]]:
         }
         for row in rows
     ]
+
+
+def explain_smtp_error(exc: BaseException, host: str, port: int) -> str:
+    """Понятная причина сбоя отправки и что сделать; техническая деталь — в скобках."""
+    detail = f"{type(exc).__name__}: {exc}"
+    if isinstance(exc, smtplib.SMTPAuthenticationError):
+        return (
+            "Почтовый сервер не принял логин или пароль. Для Mail.ru и Яндекса нужен "
+            f"пароль для внешних приложений с доступом к SMTP. ({detail})"
+        )
+    if isinstance(exc, (ssl.SSLError, smtplib.SMTPServerDisconnected, ConnectionResetError)):
+        return (
+            f"Соединение с {host}:{port} обрывается сразу после подключения. Так обычно "
+            "блокирует исходящую почту VPN или провайдер: добавьте приложение в исключения "
+            "VPN или проверьте отправку на сервере. Чтение почты при этом работает. "
+            f"({detail})"
+        )
+    if isinstance(exc, (TimeoutError, socket.timeout, ConnectionRefusedError, socket.gaierror)):
+        return (
+            f"Почтовый сервер {host}:{port} недоступен. Проверьте адрес SMTP-сервера в "
+            f"«Подключениях» и доступ в интернет. ({detail})"
+        )
+    if isinstance(exc, smtplib.SMTPRecipientsRefused):
+        return f"Сервер отказался доставлять письмо на этот адрес. ({detail})"
+    return f"Не удалось отправить письмо. ({detail})"
 
 
 def _deliver(config: dict[str, Any], message: EmailMessage) -> None:
@@ -173,7 +201,7 @@ def send_reply(
     try:
         _deliver(config, message)
     except (OSError, smtplib.SMTPException) as exc:
-        status, error = "failed", f"{type(exc).__name__}: {exc}"
+        status, error = "failed", explain_smtp_error(exc, *smtp_endpoint(config))
     with transaction(conn):
         conn.execute(
             "INSERT INTO outgoing(lead_key, channel, recipient, subject, body, status, error, "
@@ -192,5 +220,5 @@ def send_reply(
         )
         audit(conn, "reply_sent" if status == "sent" else "reply_failed", user_id, f"lead:{key}")
     if error:
-        raise OutboxError("SEND_FAILED", f"Не удалось отправить: {error}")
+        raise OutboxError("SEND_FAILED", error)
     return {"to": info["to"], "subject": info["subject"], "status": status}

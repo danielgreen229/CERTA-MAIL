@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from '../components/Icon.vue'
 import { onMounted, ref } from 'vue'
 import { api, ApiError } from '../api'
 
@@ -37,9 +38,9 @@ onMounted(load)
 </script>
 
 <template>
-  <main class="page">
+  <div class="page">
     <div class="row" style="justify-content: space-between">
-      <h1>Качество агента</h1>
+      <h1><Icon name="quality" /> Качество ответов</h1>
       <a href="/api/quality/cases" download><button>Выгрузить исправления в набор проверок</button></a>
     </div>
     <div v-if="loading" class="empty"><span class="spinner"></span> Загрузка…</div>
@@ -78,7 +79,7 @@ onMounted(load)
         </section>
       </div>
     </template>
-  </main>
+  </div>
 </template>
 
 <style scoped>

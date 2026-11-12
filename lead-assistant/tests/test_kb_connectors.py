@@ -240,6 +240,7 @@ def test_email_is_normalized() -> None:
         "name": "Иван Петров",
         "contact": "ivan@example.com",
         "text": "Тема: Перевозка\nНужно перевезти 3 паллеты.",
+        "subject": "Перевозка",
     }
     assert json.dumps(item, ensure_ascii=False)
 

@@ -31,7 +31,7 @@ async function submit() {
 </script>
 
 <template>
-  <main class="page" style="max-width: 420px">
+  <div class="page" style="max-width: 420px">
     <form class="card" @submit.prevent="submit">
       <h1>Смена пароля</h1>
       <p v-if="session.user?.must_change_password" class="alert warn">
@@ -46,5 +46,5 @@ async function submit() {
       <div v-if="error" class="alert error">{{ error }}</div>
       <button class="primary" type="submit" :disabled="busy" style="margin-top: 12px">Сменить пароль</button>
     </form>
-  </main>
+  </div>
 </template>

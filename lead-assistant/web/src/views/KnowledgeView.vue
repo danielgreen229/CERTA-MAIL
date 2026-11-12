@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from '../components/Icon.vue'
 import { onMounted, ref } from 'vue'
 import { api, ApiError, formatDate, ROLE, type KbHit } from '../api'
 import { can } from '../session'
@@ -96,8 +97,8 @@ onMounted(load)
 </script>
 
 <template>
-  <main class="page">
-    <h1>База знаний</h1>
+  <div class="page">
+    <div class="page-head"><h1><Icon name="book" /> База знаний</h1></div>
     <p class="muted small">
       Документы компании (тарифы, регламенты, условия). Фрагменты действующих документов показываются в карточке заявки
       как источники для ответа. Типы: {{ limits.types.join(', ') }}, до {{ Math.round(limits.max_bytes / 1048576) }} МБ.
@@ -163,7 +164,7 @@ onMounted(load)
         </table>
       </div>
     </section>
-  </main>
+  </div>
 </template>
 
 <style scoped>

@@ -20,7 +20,10 @@ export interface LeadSummary {
   key: string
   date: string | null
   channel: string | null
+  source: string
   name: string | null
+  contact: string | null
+  subject: string | null
   text: string | null
   status: string
   category: string | null

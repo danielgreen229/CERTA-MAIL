@@ -133,6 +133,8 @@ class LeadView:
             "channel": lead.get("channel"),
             "source": source_of(lead),
             "name": lead.get("name"),
+            "contact": lead.get("contact"),
+            "subject": lead.get("subject"),
             "text": lead.get("text"),
             "status": lead.get("status"),
             "category": lead.get("category"),

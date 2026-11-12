@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from '../components/Icon.vue'
 import { onMounted, ref } from 'vue'
 import { api, ApiError, formatDate } from '../api'
 import { can } from '../session'
@@ -110,25 +111,36 @@ async function remove(c: Connector) {
   }
 }
 
+const KIND_ICON: Record<string, 'telegram' | 'decide' | 'truck' | 'sale'> = { telegram: 'telegram', crm: 'decide', tms: 'truck', tariffs: 'sale' }
+const ABOUT: Record<string, string> = {
+  email: 'Письма из этого ящика попадают в «Почту», ответы клиентам уходят с него же.',
+  telegram: 'Сообщения вашему боту попадают в «Почту» как письма.',
+  crm: 'Карточки клиентов и сделки. Сейчас доступна только проверка связи.',
+  tms: 'Статус груза по номеру накладной — прямо в окне письма.',
+  tariffs: 'Расчёт стоимости перевозки. Сейчас доступна только проверка связи.',
+}
+
 onMounted(load)
 </script>
 
 <template>
-  <main class="page">
-    <div class="row" style="justify-content: space-between">
-      <h1>Подключения</h1>
-      <button v-if="can('admin')" class="primary" @click="addMailbox">+ Добавить почтовый ящик</button>
+  <div class="page">
+    <div class="page-head">
+      <h1><Icon name="plug" /> Почта и сервисы</h1>
+      <div class="actions">
+        <button v-if="can('admin')" class="primary" @click="addMailbox"><Icon name="plus" /> Добавить почтовый ящик</button>
+      </div>
+      <p class="lead">
+        Подключённые ящики и Telegram проверяются раз в минуту — новые письма сразу попадают в «Почту».
+        Ответ клиенту уходит с того ящика, куда пришло письмо, и только по вашей кнопке.
+      </p>
     </div>
-    <p class="muted small">
-      Внешние системы включаются после ввода параметров и успешной проверки. Подключённые ящики и Telegram
-      проверяются автоматически раз в минуту, новые письма сразу разбирает агент. Ответ клиенту уходит с того
-      ящика, в который пришло письмо, — только по кнопке «Отправить ответ» в письме.
-    </p>
     <div v-if="loading" class="empty"><span class="spinner"></span> Загрузка…</div>
     <div v-else-if="error" class="alert error">{{ error }} <button @click="load">Повторить</button></div>
     <div v-else class="grid">
       <section v-for="c in items" :key="c.name" class="card">
         <div class="row">
+          <span class="kind-icon"><Icon :name="KIND_ICON[c.name] ?? (c.kind === 'imap' ? 'mail' : 'plug')" size="1.35rem" /></span>
           <h2 style="margin: 0">{{ c.title }}</h2>
           <span class="grow"></span>
           <span class="badge" :class="{ low: c.state === 'ok', high: c.state === 'error', gray: c.state === 'not_configured', medium: c.state === 'configured' }">
@@ -136,7 +148,8 @@ onMounted(load)
           </span>
         </div>
         <p v-if="c.test_service" class="badge medium">тестовый сервис</p>
-        <p class="small muted">{{ c.contract }}</p>
+        <p class="small muted">{{ ABOUT[c.kind === 'imap' ? 'email' : c.name] ?? c.contract }}</p>
+        <details v-if="can('admin')" class="tech small"><summary>Технические подробности</summary><p class="muted">{{ c.contract }}</p></details>
         <div v-if="c.detail" class="small">Последняя проверка {{ formatDate(c.checked_at) }}: {{ c.detail }}</div>
         <div v-if="messages[c.name]" class="alert small" :class="messages[c.name].kind">{{ messages[c.name].text }}</div>
 
@@ -147,23 +160,28 @@ onMounted(load)
           </div>
           <label class="row" style="color: var(--text)"><input v-model="form.test_service" type="checkbox" style="width: auto; min-height: 0" /> Это тестовый сервис</label>
           <div class="row" style="margin-top: 8px">
-            <button class="primary" type="submit">Сохранить</button>
+            <button class="primary" type="submit"><Icon name="check" /> Сохранить</button>
             <button type="button" @click="editing = null">Отмена</button>
           </div>
         </form>
         <div v-else class="row" style="margin-top: 8px">
-          <button v-if="can('admin')" @click="edit(c)">Параметры</button>
-          <button v-if="can('admin')" :disabled="c.state === 'not_configured'" @click="check(c)">Проверить</button>
+          <button v-if="can('admin')" @click="edit(c)"><Icon name="settings" /> Настроить</button>
+          <button v-if="can('admin')" :disabled="c.state === 'not_configured'" @click="check(c)"><Icon name="refresh" /> Проверить связь</button>
           <button v-if="can('supervisor') && (c.kind === 'imap' || c.kind === 'telegram')" :disabled="c.state !== 'ok'" @click="importNow(c)">
-            Проверить почту сейчас
+            <Icon name="inbox" /> Забрать письма сейчас
           </button>
-          <button v-if="can('admin') && c.removable" class="danger" @click="remove(c)">Удалить</button>
+          <button v-if="can('admin') && c.removable" class="danger icon-only" title="Удалить ящик" aria-label="Удалить ящик" @click="remove(c)"><Icon name="trash" /></button>
         </div>
       </section>
     </div>
-  </main>
+  </div>
 </template>
 
 <style scoped>
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(22rem, 1fr)); gap: 1rem; }
+.grid > .card { display: flex; flex-direction: column; gap: 0.35rem; }
+.grid > .card > .badge { align-self: flex-start; margin: 0; }
+.kind-icon { width: 2.4rem; height: 2.4rem; border-radius: var(--radius-s); display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); flex: none; }
+.tech summary { cursor: pointer; color: var(--muted); }
+.tech p { margin: 0.3rem 0 0; overflow-wrap: anywhere; }
 </style>

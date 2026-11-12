@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from '../components/Icon.vue'
 import { onMounted, ref } from 'vue'
 import { api, ApiError, formatDate, ROLE, type User } from '../api'
 import { can, loadSession, session } from '../session'
@@ -69,8 +70,8 @@ onMounted(load)
 </script>
 
 <template>
-  <main class="page">
-    <h1>Настройки</h1>
+  <div class="page">
+    <div class="page-head"><h1><Icon name="settings" /> Настройки</h1></div>
     <div class="row"><RouterLink to="/password">Сменить свой пароль</RouterLink></div>
     <div v-if="error" class="alert error">{{ error }}</div>
     <div v-if="message" class="alert ok">{{ message }}</div>
@@ -137,7 +138,7 @@ onMounted(load)
       </div>
     </section>
     <p class="small muted">Версия {{ session.version }}</p>
-  </main>
+  </div>
 </template>
 
 <style scoped>

@@ -1,12 +1,63 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onUnmounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { api, ROLE } from './api'
+import BrandLogo from './components/BrandLogo.vue'
+import FolderNav from './components/FolderNav.vue'
+import Icon, { type IconName } from './components/Icon.vue'
+import { applyFolder, filters, loadMail, mail, startPolling, stopPolling, type FolderFilter } from './mailbox'
+import { soundOn, toggleSound } from './notify'
 import { session, can } from './session'
-import { theme, nextTheme, THEME_ICON, THEME_TITLE } from './theme'
+import { theme, nextTheme, THEME_TITLE } from './theme'
 
 const router = useRouter()
+const route = useRoute()
 const menuOpen = ref(false)
+const onMail = computed(() => route.path.startsWith('/leads'))
+const waiting = computed(() => (mail.data?.counts.new ?? 0) + (mail.data?.counts.pending ?? 0))
+const initials = computed(() =>
+  (session.user?.name ?? '?').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase(),
+)
+const themeIcon = computed<IconName>(() => ({ system: 'auto', light: 'sun', dark: 'moon' })[theme.value] as IconName)
+
+interface NavItem { to: string; label: string; icon: IconName; role?: 'supervisor' | 'admin'; hint: string }
+const NAV: NavItem[] = [
+  { to: '/jobs', label: 'Разбор писем', icon: 'agent', hint: 'Как помощник разбирает новые письма' },
+  { to: '/quality', label: 'Качество ответов', icon: 'quality', role: 'supervisor', hint: 'Сколько черновиков принято и почему правят' },
+  { to: '/knowledge', label: 'База знаний', icon: 'book', hint: 'Документы, на которые опирается помощник' },
+  { to: '/connectors', label: 'Почта и сервисы', icon: 'plug', hint: 'Почтовые ящики, Telegram, TMS' },
+  { to: '/settings', label: 'Настройки', icon: 'settings', hint: 'Сроки, отделы, пользователи' },
+]
+
+// Список писем и уведомления живут всё время, пока человек вошёл: звук слышен на любой странице.
+watch(
+  () => session.user?.id,
+  (id) => {
+    if (id && !session.user?.must_change_password) {
+      loadMail(true)
+      startPolling()
+    } else stopPolling()
+  },
+  { immediate: true },
+)
+onUnmounted(stopPolling)
+watch(() => route.fullPath, () => (menuOpen.value = false))
+
+function openFolder(folder: FolderFilter) {
+  applyFolder(folder, onMail.value)
+  if (!onMail.value) router.push('/leads')
+}
+
+const search = ref(filters.q)
+watch(() => filters.q, (q) => (search.value = q))
+let debounce: number | undefined
+function onSearch() {
+  window.clearTimeout(debounce)
+  debounce = window.setTimeout(() => {
+    filters.q = search.value.trim()
+    if (!onMail.value) router.push('/leads')
+  }, 250)
+}
 
 async function logout() {
   await api.post('/api/auth/logout').catch(() => undefined)
@@ -16,50 +67,162 @@ async function logout() {
 </script>
 
 <template>
-  <header v-if="session.user" class="top">
-    <div class="brand">Заявки «Церта»</div>
-    <button class="menu-toggle" aria-label="Меню" @click="menuOpen = !menuOpen">☰</button>
-    <nav :class="{ open: menuOpen }" @click="menuOpen = false">
-      <RouterLink to="/leads">Почта</RouterLink>
-      <RouterLink to="/jobs">Обработка</RouterLink>
-      <RouterLink v-if="can('supervisor')" to="/quality">Качество</RouterLink>
-      <RouterLink to="/knowledge">База знаний</RouterLink>
-      <RouterLink to="/connectors">Подключения</RouterLink>
-      <RouterLink to="/settings">Настройки</RouterLink>
-    </nav>
-    <div class="who">
-      <span class="small">{{ session.user.name }} · {{ ROLE[session.user.role] }}</span>
-      <button class="theme" type="button" :title="THEME_TITLE[theme]" :aria-label="THEME_TITLE[theme]" @click="nextTheme">
-        {{ THEME_ICON[theme] }}
+  <div v-if="session.user && !route.meta.public && !session.user.must_change_password" class="shell" :class="{ 'menu-open': menuOpen }">
+    <aside class="sidebar" aria-label="Разделы">
+      <RouterLink to="/leads" class="logo" aria-label="Certa — на главную"><BrandLogo /></RouterLink>
+      <nav class="nav">
+        <RouterLink to="/leads" class="nav-item" :class="{ current: onMail }" @click="applyFolder({})">
+          <Icon name="inbox" size="1.2rem" />
+          <span class="label">Почта</span>
+          <span v-if="waiting" class="nav-count num">{{ waiting }}</span>
+        </RouterLink>
+        <FolderNav v-if="mail.data && onMail" class="mail-folders" @select="openFolder" />
+        <div class="nav-sep" role="separator"></div>
+        <template v-for="item in NAV" :key="item.to">
+          <RouterLink v-if="!item.role || can(item.role)" :to="item.to" class="nav-item" :title="item.hint">
+            <Icon :name="item.icon" size="1.2rem" />
+            <span class="label">{{ item.label }}</span>
+          </RouterLink>
+        </template>
+      </nav>
+    </aside>
+    <div class="scrim" aria-hidden="true" @click="menuOpen = false"></div>
+
+    <header class="topbar">
+      <button class="ghost icon-only menu-btn" aria-label="Открыть меню" @click="menuOpen = !menuOpen">
+        <Icon name="menu" />
       </button>
-      <button @click="logout">Выйти</button>
+      <RouterLink to="/leads" class="topbar-logo" aria-label="Certa"><BrandLogo compact /></RouterLink>
+      <label class="search">
+        <span class="visually-hidden">Поиск по письмам</span>
+        <Icon name="search" class="search-icon" />
+        <input
+          v-model="search"
+          type="search"
+          placeholder="Поиск: имя, адрес, текст, номер накладной"
+          @input="onSearch"
+        />
+      </label>
+      <div class="top-actions">
+        <RouterLink v-if="session.demoSettings && can('admin')" to="/settings" class="demo" title="Сроки реакции и отделы пока примерные — настройте их">
+          <Icon name="info" size="1rem" /> <span>Примерные настройки</span>
+        </RouterLink>
+        <button
+          class="ghost icon-only"
+          :aria-pressed="soundOn"
+          :title="soundOn ? 'Звук о новых письмах включён' : 'Звук о новых письмах выключен'"
+          :aria-label="soundOn ? 'Выключить звук о новых письмах' : 'Включить звук о новых письмах'"
+          @click="toggleSound"
+        >
+          <Icon :name="soundOn ? 'bell' : 'bellOff'" />
+        </button>
+        <button class="ghost icon-only" :title="THEME_TITLE[theme]" :aria-label="THEME_TITLE[theme]" @click="nextTheme">
+          <Icon :name="themeIcon" />
+        </button>
+        <div class="user">
+          <span class="avatar" aria-hidden="true">{{ initials }}</span>
+          <span class="who">
+            <b>{{ session.user.name }}</b>
+            <span class="muted small">{{ ROLE[session.user.role] }}</span>
+          </span>
+          <button class="ghost icon-only" title="Выйти" aria-label="Выйти" @click="logout"><Icon name="logout" /></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="content">
+      <RouterView />
+    </main>
+
+    <div v-if="mail.toast" class="toast" role="status" @click="mail.toast = ''">
+      <Icon name="mail" /> {{ mail.toast }}
     </div>
-  </header>
-  <div v-if="session.user && session.demoSettings" class="demo-bar">
-    Демонстрационные настройки: сроки реакции, рабочий календарь и правила назначения — примерные.
-    Измените их в «Настройках».
   </div>
-  <RouterView />
+  <RouterView v-else />
 </template>
 
 <style scoped>
-.top {
-  display: flex; align-items: center; gap: 16px; padding: 8px 16px;
-  background: var(--surface); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5;
+.shell {
+  display: grid; min-height: 100vh;
+  grid-template-columns: var(--sidebar) minmax(0, 1fr);
+  grid-template-rows: var(--topbar) 1fr;
+  grid-template-areas: 'side top' 'side main';
 }
-.brand { font-weight: 700; white-space: nowrap; }
-nav { display: flex; gap: 4px; flex: 1; }
-nav a { padding: 6px 10px; border-radius: 8px; text-decoration: none; color: var(--text); }
-nav a.router-link-active { background: var(--accent-soft); color: var(--accent); }
-.who { display: flex; align-items: center; gap: 8px; }
-.menu-toggle { display: none; }
-.theme { width: 38px; padding: 0; font-size: 17px; line-height: 1; }
-.demo-bar { background: var(--warn-soft); color: var(--warn); padding: 6px 16px; font-size: 13px; }
-@media (max-width: 900px) {
-  .top { flex-wrap: wrap; }
-  .menu-toggle { display: inline-block; margin-left: auto; }
-  nav { display: none; flex-basis: 100%; flex-direction: column; }
-  nav.open { display: flex; }
-  .who { flex-basis: 100%; justify-content: space-between; }
+.sidebar {
+  grid-area: side; position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  background: var(--surface); border-right: 1px solid var(--line);
+  padding: 0 0.75rem 1.25rem; display: flex; flex-direction: column; scrollbar-width: thin;
+}
+.logo { display: block; height: 2.6rem; margin: 0.85rem 0.55rem 1.1rem; }
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav-item {
+  display: flex; align-items: center; gap: 0.7rem; padding: 0.5rem 0.65rem; border-radius: var(--radius-s);
+  color: var(--text); text-decoration: none; font-weight: 520; min-height: 2.5rem;
+}
+.nav-item :deep(.icon) { color: var(--muted); }
+.nav-item:hover { background: var(--accent-soft); }
+.nav-item.router-link-active, .nav-item.current { background: var(--accent-soft); color: var(--accent); font-weight: 640; }
+.nav-item.router-link-active :deep(.icon), .nav-item.current :deep(.icon) { color: var(--accent); }
+.nav-item .label { flex: 1; }
+.nav-count {
+  font-size: 0.8rem; font-weight: 650; color: #fff; background: var(--brand-red);
+  border-radius: 99px; padding: 0 0.45rem; min-width: 1.5rem; text-align: center; line-height: 1.5rem;
+}
+.mail-folders { margin: 0.2rem 0 0.4rem 0.4rem; padding-left: 0.4rem; border-left: 1px solid var(--line); }
+.nav-sep { height: 1px; background: var(--line); margin: 0.6rem 0.4rem; }
+
+.topbar {
+  grid-area: top; position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 0.75rem;
+  padding: 0 1.75rem; background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
+}
+.menu-btn, .topbar-logo { display: none; }
+.search { position: relative; flex: 1; max-width: 34rem; margin: 0; color: var(--text); font-size: 1rem; }
+.search-icon { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.search input { padding-left: 2.4rem; background: var(--surface-2); border-color: var(--line); }
+.top-actions { margin-left: auto; display: flex; align-items: center; gap: 0.35rem; }
+.demo {
+  display: inline-flex; align-items: center; gap: 0.35rem; margin-right: 0.4rem; padding: 0.25rem 0.65rem;
+  border-radius: 99px; background: var(--warn-soft); color: var(--warn); font-size: 0.82rem; text-decoration: none;
+}
+.user { display: flex; align-items: center; gap: 0.6rem; margin-left: 0.5rem; padding-left: 0.85rem; border-left: 1px solid var(--line); }
+.avatar {
+  width: 2.25rem; height: 2.25rem; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: var(--brand-navy); color: #fff; font-size: 0.82rem; font-weight: 650; letter-spacing: 0.02em;
+}
+.who { display: flex; flex-direction: column; line-height: 1.2; }
+.who b { font-weight: 600; font-size: 0.92rem; }
+.content { grid-area: main; min-width: 0; }
+.scrim { display: none; }
+.toast {
+  position: fixed; right: 1.25rem; bottom: 1.25rem; z-index: 60; cursor: pointer;
+  display: flex; align-items: center; gap: 0.6rem; padding: 0.8rem 1.1rem; border-radius: var(--radius);
+  background: var(--brand-navy); color: #fff; font-weight: 600; box-shadow: var(--shadow-pop);
+  border-left: 4px solid var(--brand-red);
+}
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+@media (max-width: 1280px) {
+  .demo span { display: none; }
+  .who { display: none; }
+}
+/* Планшет и телефон: меню выезжает слева по кнопке. */
+@media (max-width: 1024px) {
+  .shell { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'top' 'main'; }
+  .sidebar {
+    position: fixed; z-index: 50; left: 0; top: 0; bottom: 0; width: min(19rem, 86vw);
+    transform: translateX(-102%); transition: transform 0.2s ease; box-shadow: var(--shadow-pop);
+  }
+  .menu-open .sidebar { transform: none; }
+  .menu-open .scrim { display: block; position: fixed; inset: 0; z-index: 40; background: rgb(15 21 32 / 0.45); }
+  .menu-btn { display: inline-flex; }
+  .topbar { padding: 0 1rem; gap: 0.5rem; }
+  .topbar-logo { display: block; height: 1.9rem; flex: none; }
+}
+@media (max-width: 640px) {
+  .user { padding-left: 0.4rem; margin-left: 0; border: 0; }
+  .avatar { display: none; }
+  .search input::placeholder { color: transparent; }
+  .demo { display: none; }
 }
 </style>

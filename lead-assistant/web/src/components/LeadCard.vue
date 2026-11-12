@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { api, ApiError, CATEGORY, PRIORITY, formatDate, leadUrl, type Found, type LeadDetail } from '../api'
+import Icon from './Icon.vue'
 
 const props = defineProps<{ leadKey: string }>()
 const emit = defineEmits<{ close: []; changed: [] }>()
@@ -165,34 +166,49 @@ async function sendReply() {
   }
 }
 
+const foundFields = computed(() => {
+  const l = lead.value
+  if (!l) return {}
+  return Object.fromEntries(Object.entries(l.field_titles).filter(([k]) => l.extraction.fields[k]?.length))
+})
+
 const channelTitle: Record<string, string> = { email: 'Почта', telegram: 'Telegram' }
+const heading = computed(() => {
+  const l = lead.value?.lead
+  if (!l) return 'Загрузка…'
+  if (l.subject) return String(l.subject)
+  const first = String(l.text ?? '').split('\n')[0] ?? ''
+  return (first.startsWith('Тема: ') ? first.slice(6) : first).slice(0, 120) || 'Без темы'
+})
 </script>
 
 <template>
   <article class="card">
     <div class="row" style="justify-content: space-between">
-      <h2>Письмо № {{ leadKey.replace(/"/g, '') }}</h2>
-      <button aria-label="Закрыть" title="Закрыть (Esc)" @click="emit('close')">✕ Закрыть</button>
+      <div class="title">
+        <span class="small muted">Письмо № {{ leadKey.replace(/"/g, '') }}</span>
+        <h2>{{ heading }}</h2>
+      </div>
+      <button class="ghost icon-only" aria-label="Закрыть" title="Закрыть (Esc)" @click="emit('close')"><Icon name="close" /></button>
     </div>
     <div v-if="loading" class="empty"><span class="spinner"></span> Загрузка…</div>
     <div v-else-if="error" class="alert error">{{ error }} <button @click="load">Повторить</button></div>
     <template v-else-if="lead">
       <div class="row small">
         <span class="badge" :class="{ gray: lead.state !== 'pending' }">{{ lead.state_title }}</span>
-        <span v-if="lead.result" class="muted">версия результата {{ lead.result.version }}</span>
-        <span v-if="lead.result?.run_id" class="muted">прогон {{ lead.result.run_id }}</span>
+
       </div>
       <div v-if="notice" class="alert ok">{{ notice }}</div>
       <div v-if="actionError" class="alert error">{{ actionError }}</div>
 
       <div v-if="lead.review_reasons.length && lead.state === 'pending'" class="alert warn">
-        <strong>Нужна проверка человеком:</strong>
-        <ul><li v-for="r in lead.review_reasons" :key="r.code + r.text">{{ r.text }}</li></ul>
+        <Icon name="flag" /><div><strong>Проверьте сами:</strong>
+        <ul><li v-for="r in lead.review_reasons" :key="r.code + r.text">{{ r.text }}</li></ul></div>
       </div>
 
       <div class="cols">
         <section>
-          <h3>Исходное обращение</h3>
+          <h3><Icon name="mail" /> Письмо клиента</h3>
           <dl class="headers small">
             <dt>От</dt>
             <dd>{{ lead.lead.name }} <span class="muted">&lt;{{ lead.lead.contact || 'контакт не указан' }}&gt;</span></dd>
@@ -207,10 +223,10 @@ const channelTitle: Record<string, string> = { email: 'Почта', telegram: 'T
           </dl>
           <pre class="source">{{ lead.lead.text }}</pre>
 
-          <h3>Извлечённые сведения</h3>
+          <h3><Icon name="truck" /> Что понял помощник</h3>
           <table class="small">
             <tbody>
-              <tr v-for="(title, field) in lead.field_titles" :key="field">
+              <tr v-for="(title, field) in foundFields" :key="field">
                 <th>{{ title }}</th>
                 <td>
                   <template v-if="lead.extraction.fields[field]?.length">
@@ -218,7 +234,7 @@ const channelTitle: Record<string, string> = { email: 'Почта', telegram: 'T
                       {{ show(item) }} <span class="muted">— «{{ item.quote }}»</span>
                     </div>
                   </template>
-                  <span v-else class="muted">не указано</span>
+
                 </td>
               </tr>
             </tbody>
@@ -229,7 +245,7 @@ const channelTitle: Record<string, string> = { email: 'Почта', telegram: 'T
           </div>
 
           <template v-if="lead.shipments.length">
-            <h3>Статус отправления</h3>
+            <h3><Icon name="truck" /> Статус груза</h3>
             <div v-for="s in lead.shipments" :key="s.number" class="small">
               № {{ s.number }}: <b>{{ s.data?.status ?? s.error }}</b>
               <span v-if="s.data?.eta"> · ожидается {{ s.data.eta }}</span>
@@ -239,7 +255,7 @@ const channelTitle: Record<string, string> = { email: 'Почта', telegram: 'T
         </section>
 
         <section>
-          <h3>Результат агента</h3>
+          <h3><Icon name="agent" /> Оценка помощника</h3>
           <div v-if="!lead.result" class="muted">Заявка ещё не обработана агентом. Запустите «Обработать новые».</div>
           <template v-else-if="current">
             <div class="row">
@@ -252,9 +268,10 @@ const channelTitle: Record<string, string> = { email: 'Почта', telegram: 'T
               <div v-if="analysis.manager_check"><b>Проверить:</b> {{ analysis.manager_check }}</div>
               <div><b>Следующий шаг:</b> {{ analysis.next_action || (current.category === 'spam' ? 'не отвечать' : 'связаться с клиентом по черновику') }}</div>
             </div>
-            <h3>Черновик ответа</h3>
-            <pre v-if="current.draft_reply" class="draft">{{ current.draft_reply }}</pre>
-            <div v-else class="muted">Для спама ответ не готовится.</div>
+            <h3><Icon name="edit" /> Черновик ответа</h3>
+            <pre v-if="current.draft_reply && !lead.reply.available" class="draft">{{ current.draft_reply }}</pre>
+            <div v-else-if="!current.draft_reply" class="muted">Для спама ответ не готовится.</div>
+            <div v-else class="small muted">Текст черновика — в поле «Ответ клиенту» ниже: поправьте и отправьте.</div>
 
             <div v-if="lead.decision" class="small muted" style="margin-top: 6px">
               {{ actionTitle[lead.decision.action] }}: {{ lead.decision.user }}, {{ formatDate(lead.decision.created_at) }}
@@ -262,10 +279,10 @@ const channelTitle: Record<string, string> = { email: 'Почта', telegram: 'T
             </div>
 
             <div v-if="mode === 'view'" class="row actions">
-              <button class="ok" :disabled="busy || lead.decision?.action === 'accept'" @click="decide('accept')">Принять</button>
-              <button :disabled="busy" @click="startCorrect">Исправить</button>
-              <button class="danger" :disabled="busy" @click="mode = 'reject'">Отклонить</button>
-              <button :disabled="busy" @click="startAssign">Назначить</button>
+              <button class="ok" :disabled="busy || lead.decision?.action === 'accept'" title="Черновик и оценка верны" @click="decide('accept')"><Icon name="check" /> Принять</button>
+              <button :disabled="busy" title="Поправить категорию, срочность или текст" @click="startCorrect"><Icon name="edit" /> Исправить</button>
+              <button class="danger" :disabled="busy" title="Помощник ошибся — укажите почему" @click="mode = 'reject'"><Icon name="reject" /> Отклонить</button>
+              <button class="ghost" :disabled="busy" title="Сменить ответственного или срок" @click="startAssign"><Icon name="assign" /> Назначить</button>
             </div>
 
             <form v-if="mode === 'correct'" class="sub" @submit.prevent="decide('correct')">
@@ -315,7 +332,7 @@ const channelTitle: Record<string, string> = { email: 'Почта', telegram: 'T
           </form>
 
           <section class="reply">
-            <h3>Ответ клиенту</h3>
+            <h3><Icon name="send" /> Ответ клиенту</h3>
             <template v-if="lead.reply.available">
               <div class="small muted">
                 Кому: <b>{{ lead.reply.to }}</b> · от: {{ lead.reply.from }} · тема: {{ lead.reply.subject }}
@@ -329,7 +346,7 @@ const channelTitle: Record<string, string> = { email: 'Почта', telegram: 'T
               ></textarea>
               <div class="row actions">
                 <button class="primary" :disabled="sending || !replyText.trim()" @click="sendReply">
-                  {{ sending ? 'Отправка…' : alreadySent ? 'Отправить ещё раз' : 'Отправить ответ' }}
+                  <Icon name="send" /> {{ sending ? 'Отправка…' : alreadySent ? 'Отправить ещё раз' : 'Отправить ответ' }}
                 </button>
                 <span v-if="current && replyText !== (current.draft_reply ?? '')" class="small muted">изменён относительно черновика</span>
               </div>
@@ -349,7 +366,7 @@ const channelTitle: Record<string, string> = { email: 'Почта', telegram: 'T
             <b>Срок реакции:</b> <span :class="{ late: lead.overdue }">{{ formatDate(lead.due_at) }}</span>
           </div>
 
-          <h3>Источники из базы знаний</h3>
+          <h3><Icon name="book" /> Из базы знаний</h3>
           <div v-for="c in lead.knowledge.conflicts" :key="c" class="alert warn small">{{ c }} — проверьте вручную.</div>
           <div v-if="!lead.knowledge.results.length" class="small muted">Подходящих действующих документов не найдено.</div>
           <div v-for="hit in lead.knowledge.results" :key="hit.chunk_id" class="hit small">
@@ -359,7 +376,7 @@ const channelTitle: Record<string, string> = { email: 'Почта', telegram: 'T
         </section>
       </div>
 
-      <h3>История</h3>
+      <h3><Icon name="calendar" /> История</h3>
       <ol class="history small">
         <li v-for="(h, i) in lead.history" :key="i">
           <span class="muted">{{ formatDate(h.at) }}</span>
@@ -388,7 +405,12 @@ const channelTitle: Record<string, string> = { email: 'Почта', telegram: 'T
 </template>
 
 <style scoped>
-.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.card { padding: 1.5rem 1.75rem; }
+.title { min-width: 0; flex: 1; }
+.title h2 { font-size: 1.35rem; margin: 0.1rem 0 0; overflow-wrap: anywhere; }
+h3 { display: flex; align-items: center; gap: 0.45rem; }
+h3 :deep(.icon) { color: var(--muted); }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 0.5rem; }
 .headers { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0 0 8px; }
 .headers dt { color: var(--muted); }
 .headers dd { margin: 0; overflow-wrap: anywhere; }
@@ -408,5 +430,6 @@ th { width: 38%; }
 ul { margin: 4px 0 0; padding-left: 18px; }
 .modal { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: grid; place-items: center; padding: 16px; z-index: 20; }
 .modal .card { max-width: 720px; width: 100%; max-height: 80vh; overflow: auto; }
-@media (max-width: 1300px) { .cols { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .cols { grid-template-columns: 1fr; gap: 0.5rem; } }
+@media (max-width: 760px) { .card { padding: 1rem; border-radius: 0; } }
 </style>

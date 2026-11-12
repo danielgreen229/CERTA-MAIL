@@ -446,6 +446,8 @@ def normalize_email(raw: bytes) -> dict[str, Any]:
             "name": name or address,
             "contact": address,
             "text": text[:5000],
+            # Тема хранится отдельно: по ней строится «Re: …» в ответе клиенту.
+            **({"subject": subject[:300]} if subject else {}),
         },
     }
 

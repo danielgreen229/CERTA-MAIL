@@ -5,6 +5,7 @@ from __future__ import annotations
 import email
 import io
 import json
+import smtplib
 import socket
 import socketserver
 import threading
@@ -104,6 +105,15 @@ def _connect_mail(paths: AppPaths, smtp_port: int) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def test_smtp_errors_are_explained_in_plain_words() -> None:
+    import ssl
+
+    blocked = outbox.explain_smtp_error(ssl.SSLEOFError(8, "EOF"), "smtp.mail.ru", 465)
+    assert "VPN" in blocked and "smtp.mail.ru:465" in blocked
+    auth = outbox.explain_smtp_error(smtplib.SMTPAuthenticationError(535, b"bad"), "h", 465)
+    assert "пароль для внешних приложений" in auth
 
 
 def test_smtp_endpoint_is_derived_from_imap_host() -> None:

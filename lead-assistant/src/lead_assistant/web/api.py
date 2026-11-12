@@ -528,6 +528,12 @@ def create_app(paths: AppPaths) -> Starlette:
                 status_code=503,
                 media_type="text/plain; charset=utf-8",
             )
+        # Файлы из корня сборки (значок вкладки и т. п.) отдаются как есть, остальное — SPA.
+        name = request.url.path.lstrip("/")
+        if name and not any(bad in name for bad in ("/", "\\", "..")) and name != "index.html":
+            candidate = paths.static_dir / name
+            if candidate.is_file():
+                return FileResponse(candidate)
         return FileResponse(index)
 
     routes: list[Route | Mount] = [
