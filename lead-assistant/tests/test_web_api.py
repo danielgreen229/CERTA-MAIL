@@ -67,6 +67,8 @@ def test_list_filters_and_review_queue(tmp_path: Path) -> None:
     with client_for(paths) as client:
         data = client.get("/api/leads").json()
         assert data["counts"]["total"] == 15 and data["counts"]["pending"] == 15
+        dates = [lead["date"] for lead in data["leads"]]
+        assert dates == sorted(dates, reverse=True), "как в почте: сверху новые"
         high = client.get("/api/leads?priority=high").json()["leads"]
         assert {lead["id"] for lead in high} == {2, 7, 9, 13}
         assert all(lead["needs_review"] for lead in high)
@@ -252,7 +254,7 @@ def test_string_ids_keep_their_type(tmp_path: Path) -> None:
     paths = make_paths(tmp_path, source)
     with client_for(paths) as client:
         keys = [lead["key"] for lead in client.get("/api/leads").json()["leads"]]
-        assert keys == ['"A-1"', "1"]
+        assert keys == ["1", '"A-1"'], "при равной дате выше та, что добавлена позже"
         detail = client.get('/api/leads/"A-1"').json()
         assert detail["lead"]["id"] == "A-1"
         assert detail["extraction"]["fields"]["route"][0]["value"] == {

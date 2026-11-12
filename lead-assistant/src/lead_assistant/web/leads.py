@@ -305,6 +305,13 @@ def source_tabs(views: list[LeadView]) -> list[dict[str, Any]]:
     return sorted(tabs, key=lambda tab: (not tab["mailbox"], tab["title"].lower()))
 
 
+def newest_first(views: list[LeadView]) -> list[LeadView]:
+    """Как в почте: сверху новые. По дате обращения, при равной — позже добавленная выше."""
+    order = list(enumerate(views))
+    order.sort(key=lambda item: (str(item[1].lead.get("date") or ""), item[0]), reverse=True)
+    return [view for _, view in order]
+
+
 def filter_views(views: list[LeadView], query: dict[str, str]) -> list[LeadView]:
     text = (query.get("q") or "").strip().lower()
     source = (query.get("source") or "").strip().lower()

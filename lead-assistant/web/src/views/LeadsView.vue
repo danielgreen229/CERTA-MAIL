@@ -122,7 +122,7 @@ onUnmounted(() => window.clearInterval(timer))
               aria-label="Папки"
               @click="foldersOpen = !foldersOpen"
             >☰ Папки</button>
-            <h1>Заявки</h1>
+            <h1>Почта</h1>
           </div>
           <button class="primary" :disabled="!!job" @click="startJob">
             {{ job ? 'Обработка идёт…' : 'Обработать новые' }}
@@ -180,7 +180,7 @@ onUnmounted(() => window.clearInterval(timer))
         </div>
         <div v-else-if="data && !data.leads.length" class="empty">
           <template v-if="data.counts.total">Нет заявок по выбранным условиям. <button @click="reset">Сбросить фильтры</button></template>
-          <template v-else>Заявок пока нет.</template>
+          <template v-else>Входящих пока нет.</template>
         </div>
         <ul v-else-if="data" class="leads">
           <li

@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, ROLE } from './api'
 import { session, can } from './session'
+import { theme, nextTheme, THEME_ICON, THEME_TITLE } from './theme'
 
 const router = useRouter()
 const menuOpen = ref(false)
@@ -19,7 +20,7 @@ async function logout() {
     <div class="brand">Заявки «Церта»</div>
     <button class="menu-toggle" aria-label="Меню" @click="menuOpen = !menuOpen">☰</button>
     <nav :class="{ open: menuOpen }" @click="menuOpen = false">
-      <RouterLink to="/leads">Заявки</RouterLink>
+      <RouterLink to="/leads">Почта</RouterLink>
       <RouterLink to="/jobs">Обработка</RouterLink>
       <RouterLink v-if="can('supervisor')" to="/quality">Качество</RouterLink>
       <RouterLink to="/knowledge">База знаний</RouterLink>
@@ -28,6 +29,9 @@ async function logout() {
     </nav>
     <div class="who">
       <span class="small">{{ session.user.name }} · {{ ROLE[session.user.role] }}</span>
+      <button class="theme" type="button" :title="THEME_TITLE[theme]" :aria-label="THEME_TITLE[theme]" @click="nextTheme">
+        {{ THEME_ICON[theme] }}
+      </button>
       <button @click="logout">Выйти</button>
     </div>
   </header>
@@ -49,6 +53,7 @@ nav a { padding: 6px 10px; border-radius: 8px; text-decoration: none; color: var
 nav a.router-link-active { background: var(--accent-soft); color: var(--accent); }
 .who { display: flex; align-items: center; gap: 8px; }
 .menu-toggle { display: none; }
+.theme { width: 38px; padding: 0; font-size: 17px; line-height: 1; }
 .demo-bar { background: var(--warn-soft); color: var(--warn); padding: 6px 16px; font-size: 13px; }
 @media (max-width: 900px) {
   .top { flex-wrap: wrap; }

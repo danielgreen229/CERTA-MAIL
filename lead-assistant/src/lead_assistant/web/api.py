@@ -160,7 +160,7 @@ def create_app(paths: AppPaths) -> Starlette:
         with db() as conn:
             current_user(request, conn)
             views = leads.all_views(conn, store)
-            filtered = leads.filter_views(views, dict(request.query_params))
+            filtered = leads.newest_first(leads.filter_views(views, dict(request.query_params)))
             counts = {
                 "total": len(views),
                 "new": sum(v.state == "new" for v in views),
@@ -169,10 +169,15 @@ def create_app(paths: AppPaths) -> Starlette:
                 "high": sum(v.lead.get("priority") == "high" for v in views),
                 "overdue": sum(v.summary()["overdue"] for v in views),
             }
-            # Счётчики «папок» левой панели: по состоянию и по категории.
+            # Счётчики «папок» левой панели: по состоянию, категории и срочности внутри источника.
             folders: dict[str, int] = {}
             for view in views:
-                for key in (f"state:{view.state}", f"category:{view.lead.get('category')}"):
+                source = leads.source_of(view.lead)
+                for key in (
+                    f"state:{view.state}",
+                    f"category:{view.lead.get('category')}",
+                    f"source:{source}|priority:{view.lead.get('priority')}",
+                ):
                     folders[key] = folders.get(key, 0) + 1
             active = jobs.active_job(conn)
         return JSONResponse(

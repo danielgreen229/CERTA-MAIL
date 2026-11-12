@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive } from 'vue'
-import { CATEGORY } from '../api'
+import { CATEGORY, PRIORITY } from '../api'
 
 export interface SourceTab {
   key: string
@@ -20,6 +20,8 @@ interface Folder {
   count: number
   /** Счётчик требует внимания — выделяется цветом. */
   attention?: boolean
+  /** Вложенные папки (раскрываются по стрелке). */
+  children?: Folder[]
 }
 
 interface Group {
@@ -59,13 +61,14 @@ function toggle(id: string) {
 
 const sourceIcon = (tab: SourceTab) => (tab.mailbox || tab.key === 'email' ? '✉' : tab.key === 'telegram' ? '✈' : '•')
 const f = (key: string) => props.folders[key] ?? 0
+const PRIORITY_DOT: Record<string, string> = { high: '🔴', medium: '🟡', low: '🟢' }
 
 const groups = computed<Group[]>(() => [
   {
     id: 'inbox',
     title: 'Входящие',
     folders: [
-      { id: 'all', label: 'Все заявки', icon: '📥', filter: {}, count: props.counts.total ?? 0 },
+      { id: 'all', label: 'Все входящие', icon: '📥', filter: {}, count: props.counts.total ?? 0 },
       ...props.sources.map((tab) => ({
         id: `source:${tab.key}`,
         label: tab.title,
@@ -73,6 +76,14 @@ const groups = computed<Group[]>(() => [
         filter: { source: tab.key },
         count: tab.open || tab.count,
         attention: tab.open > 0,
+        children: (['high', 'medium', 'low'] as const).map((priority) => ({
+          id: `source:${tab.key}|priority:${priority}`,
+          label: PRIORITY[priority] ?? priority,
+          icon: PRIORITY_DOT[priority],
+          filter: { source: tab.key, priority },
+          count: f(`source:${tab.key}|priority:${priority}`),
+          attention: priority === 'high' && f(`source:${tab.key}|priority:${priority}`) > 0,
+        })),
       })),
     ],
   },
@@ -129,7 +140,17 @@ function isActive(folder: Folder): boolean {
         {{ group.title }}
       </button>
       <ul v-show="!collapsed[group.id]" :id="`folders-${group.id}`">
-        <li v-for="folder in group.folders" :key="folder.id">
+        <li v-for="folder in group.folders" :key="folder.id" class="item">
+          <button
+            v-if="folder.children"
+            type="button"
+            class="expander"
+            :aria-expanded="!collapsed[folder.id]"
+            :aria-label="`${collapsed[folder.id] ? 'Раскрыть' : 'Свернуть'}: ${folder.label}`"
+            @click="toggle(folder.id)"
+          >
+            <span class="chevron" :class="{ closed: collapsed[folder.id] }" aria-hidden="true">▾</span>
+          </button>
           <button
             type="button"
             class="folder"
@@ -141,6 +162,21 @@ function isActive(folder: Folder): boolean {
             <span class="label" :title="folder.label">{{ folder.label }}</span>
             <span v-if="folder.count" class="count" :class="{ attention: folder.attention }">{{ folder.count }}</span>
           </button>
+          <ul v-if="folder.children" v-show="!collapsed[folder.id]" class="children">
+            <li v-for="child in folder.children" :key="child.id">
+              <button
+                type="button"
+                class="folder child"
+                :class="{ active: isActive(child) }"
+                :aria-current="isActive(child) ? 'page' : undefined"
+                @click="emit('select', child.filter)"
+              >
+                <span class="icon dot" aria-hidden="true">{{ child.icon }}</span>
+                <span class="label">{{ child.label }}</span>
+                <span v-if="child.count" class="count" :class="{ attention: child.attention }">{{ child.count }}</span>
+              </button>
+            </li>
+          </ul>
         </li>
       </ul>
     </section>
@@ -149,6 +185,15 @@ function isActive(folder: Folder): boolean {
 
 <style scoped>
 .folders { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.item { position: relative; }
+.expander {
+  position: absolute; left: -4px; top: 5px; z-index: 1; width: 18px; height: 24px; min-height: 0;
+  padding: 0; border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 12px;
+}
+.expander:hover { color: var(--text); }
+.children { margin: 1px 0 4px; padding-left: 16px; }
+.folder.child { min-height: 30px; font-size: 13px; }
+.dot { font-size: 9px; }
 .group-head {
   width: 100%; display: flex; align-items: center; gap: 6px; border: 0; background: none;
   padding: 6px 8px; min-height: 0; font-size: 12px; font-weight: 600; text-transform: uppercase;
@@ -168,6 +213,6 @@ ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: col
 .icon { width: 18px; text-align: center; flex: none; }
 .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .count { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.count.attention { color: #fff; background: var(--accent); border-radius: 10px; padding: 0 7px; font-weight: 600; }
+.count.attention { color: var(--on-accent); background: var(--accent); border-radius: 10px; padding: 0 7px; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .chevron { transition: none; } }
 </style>
