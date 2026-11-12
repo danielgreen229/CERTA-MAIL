@@ -2,7 +2,10 @@
 
 **[▶ Видеоинструкция, 3:14](video/certa-instrukciya.mp4)** · **[Лендинг проекта](https://sitebypro.ru/certa/)** · [субтитры к видео](video/certa-instrukciya.srt)
 
-[![Рабочее место менеджера Certa: нажмите, чтобы открыть видеоинструкцию](landing/media/preview.gif)](video/certa-instrukciya.mp4)
+> 🔊 **Видеоинструкцию смотрите со звуком.** Всё объясняет голос за кадром, без звука
+> останутся только субтитры. Превью ниже беззвучное, полное видео открывается по клику.
+
+[![Рабочее место менеджера Certa: нажмите, чтобы открыть видеоинструкцию со звуком](landing/media/preview.gif)](video/certa-instrukciya.mp4)
 
 Менеджеры логистической компании разбирали заявки из почты и Telegram вручную: что это за
 обращение, насколько оно срочное, какой ответ написать. Теперь это делает AI-агент, а менеджер
@@ -27,13 +30,13 @@
 | Комплект сдачи | [`release/`](release/) — обработанный `leads.json`, скриншоты, диалоги с ИИ, отчёт проверки, архив |
 | Версия | 2.1.0 · 244 автотеста · ruff, mypy strict, vue-tsc — без замечаний |
 | Лендинг | **[sitebypro.ru/certa](https://sitebypro.ru/certa/)** · исходники в [`landing/`](landing/) |
-| Видео | [видеоинструкция, 3:14](video/certa-instrukciya.mp4) · [субтитры](video/certa-instrukciya.srt) |
+| Видео | [видеоинструкция, 3:14](video/certa-instrukciya.mp4), смотреть со звуком · [субтитры](video/certa-instrukciya.srt) |
 
 ## Видео и лендинг
 
 [![Видеоинструкция Certa: открыть ролик](landing/media/certa-instrukciya.jpg)](video/certa-instrukciya.mp4)
 
-**[Видеоинструкция](video/certa-instrukciya.mp4)** (3:14, со звуком, [субтитры](video/certa-instrukciya.srt)).
+**[Видеоинструкция](video/certa-instrukciya.mp4)** (3:14, [субтитры](video/certa-instrukciya.srt)). 🔊 **Включите звук**: пояснения идут голосом.
 В ролике показано, как помощник читает письма из почты и Telegram, определяет тему и
 срочность, готовит черновик, а менеджер проверяет и отправляет ответ.
 
