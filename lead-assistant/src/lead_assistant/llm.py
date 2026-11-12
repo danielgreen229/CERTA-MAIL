@@ -547,8 +547,16 @@ def main(argv: list[str] | None = None) -> int:
     install.add_argument(
         "--choose", action="store_true", help="выбрать модель и сборку из списка в терминале"
     )
+    fetch = commands.add_parser(
+        "fetch-model", help="скачать только файл модели (для контейнера с готовым сервером)"
+    )
+    fetch.add_argument("--model", default=os.environ.get(ENV_MODEL) or DEFAULT_MODEL)
     args = parser.parse_args(argv)
     try:
+        if args.command == "fetch-model":
+            weights = ensure_model(args.model)
+            print(f"модель: {weights} (sha256 проверена)")
+            return 0
         if args.command == "install":
             from lead_assistant import backends  # локальный импорт: backends зависит от llm
 

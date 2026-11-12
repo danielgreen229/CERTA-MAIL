@@ -311,6 +311,25 @@ class LeadStore:
             self._write_unlocked(serialize_leads(current.leads, current.style))
             return UpdateResult(lead_id, "updated")
 
+    def append_leads(self, new_leads: list[Lead]) -> list[LeadId]:
+        """Добавляет новые заявки в конец файла (импорт из каналов). ID назначаются числами
+        после максимального числового ID; существующие записи не меняются."""
+        if not new_leads:
+            return []
+        with self._locked():
+            current = self._read_unlocked()
+            numeric = [lead["id"] for lead in current.leads if type(lead["id"]) is int]
+            next_id = max(numeric, default=0) + 1
+            assigned: list[LeadId] = []
+            for lead in new_leads:
+                record = {"id": next_id, **{k: v for k, v in lead.items() if k != "id"}}
+                record["status"] = STATUS_NEW
+                current.leads.append(record)
+                assigned.append(next_id)
+                next_id += 1
+            self._write_unlocked(serialize_leads(current.leads, current.style))
+            return assigned
+
     # --- внутреннее ---------------------------------------------------------
 
     def _read_unlocked(self) -> Snapshot:

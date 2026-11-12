@@ -1,0 +1,81 @@
+# Развёртывание на любой машине с Docker: docker compose up -d
+# По умолчанию модель Qwen3-8B на процессоре. Видеокарта NVIDIA:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# Данные (leads.json, SQLite, загрузки, прогоны) — в томе leads-data, модель — в leads-llm:
+# пересоздание контейнеров их не трогает.
+
+name: lead-assistant
+
+x-app: &app
+  build: .
+  image: lead-assistant:2.0.0
+  env_file:
+    - path: .env
+      required: false
+  volumes:
+    - leads-data:/data
+  restart: unless-stopped
+
+services:
+  model:
+    <<: *app
+    command: ["python", "-m", "lead_assistant.llm", "fetch-model", "--model", "${LEADS_LLM_MODEL:-qwen3-8b}"]
+    volumes:
+      - leads-llm:/llm
+    restart: "no"
+
+  llm:
+    image: ghcr.io/ggml-org/llama.cpp:server-b12110
+    command:
+      - --model
+      - /llm/models/${LEADS_MODEL_FILE:-Qwen3-8B-Q4_K_M.gguf}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --ctx-size
+      - "${LEADS_LLM_CONTEXT:-16384}"
+      - --threads
+      - "${LEADS_LLM_THREADS:-0}"
+      - --parallel
+      - "1"
+      - --jinja
+      - --reasoning
+      - "off"
+      - --no-webui
+    volumes:
+      - leads-llm:/llm:ro
+    depends_on:
+      model:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 120s
+      retries: 30
+    restart: unless-stopped
+
+  web:
+    <<: *app
+    command: ["leads-web"]
+    ports:
+      - "${LEADS_PUBLISH:-127.0.0.1:8000}:8000"
+
+  worker:
+    <<: *app
+    command: ["leads-worker"]
+    environment:
+      LEADS_LLM_URL: http://llm:8080/v1
+      LEADS_LLM_MODEL: ${LEADS_LLM_MODEL:-qwen3-8b}
+    healthcheck:
+      disable: true
+    depends_on:
+      llm:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+volumes:
+  leads-data:
+  leads-llm:

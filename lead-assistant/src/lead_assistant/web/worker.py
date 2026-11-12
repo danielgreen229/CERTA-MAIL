@@ -1,0 +1,260 @@
+"""Фоновый обработчик: берёт задачи из SQLite и выполняет штатный прогон агента.
+
+Прогон тот же, что у команды ``process-leads``: агент работает только через три
+MCP-инструмента, раннер сверяет итог с файлом. Прогресс считается по сохранённым
+данным — сколько заявок из набора задачи уже записаны в ``leads.json``.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import logging
+import signal
+import tempfile
+import threading
+import time
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
+from datetime import date
+from pathlib import Path
+from typing import Any
+
+from lead_assistant.agent import AgentBackend
+from lead_assistant.backends import open_backend, options_from_args, use_utf8_console
+from lead_assistant.cli import build_parser as cli_parser
+from lead_assistant.llm import LlmSetupError
+from lead_assistant.models import STATUS_NEW, LeadError
+from lead_assistant.runner import RunConfig, run_processing
+from lead_assistant.storage import LeadStore
+from lead_assistant.web import jobs
+from lead_assistant.web.config import AppPaths
+from lead_assistant.web.db import connect, get_settings, init_db, lead_key
+from lead_assistant.web.leads import analyses_from_run, sync_results
+
+logger = logging.getLogger("lead_assistant.worker")
+
+type BackendFactory = Callable[[Path, Callable[[str], None]], AbstractContextManager[AgentBackend]]
+
+
+def backend_args(settings: dict[str, Any]) -> list[str]:
+    model = settings.get("model") or {}
+    args: list[str] = ["--no-download"] if model.get("no_download") else []
+    if model.get("llm_url"):
+        args += ["--llm-url", str(model["llm_url"])]
+    if model.get("model"):
+        args += ["--model", str(model["model"])]
+    if model.get("build"):
+        args += ["--build", str(model["build"])]
+    return args
+
+
+def default_backend_factory(settings: dict[str, Any]) -> BackendFactory:
+    @contextmanager
+    def factory(log: Path, echo: Callable[[str], None]) -> Iterator[AgentBackend]:
+        options = options_from_args(cli_parser().parse_args(backend_args(settings)))
+        with open_backend(options, log, echo) as backend:
+            yield backend
+
+    return factory
+
+
+class Progress:
+    """Считает прогресс задачи по файлу: какие заявки набора уже не new."""
+
+    def __init__(self, store: LeadStore, ids: list[Any]) -> None:
+        self.store = store
+        self.ids = ids
+        self.lines: list[str] = []
+
+    def snapshot(self) -> dict[str, Any]:
+        try:
+            leads = {lead_key(lead["id"]): lead for lead in self.store.snapshot().leads}
+        except LeadError as error:
+            return {"error": error.code.value, "total": len(self.ids)}
+        done = [i for i in self.ids if leads.get(lead_key(i), {}).get("status") != STATUS_NEW]
+        return {
+            "total": len(self.ids),
+            "done": len(done),
+            "done_ids": done,
+            "pending_ids": [i for i in self.ids if i not in done],
+            "log": self.lines[-8:],
+        }
+
+
+def execute_job(
+    paths: AppPaths,
+    job: dict[str, Any],
+    factory: BackendFactory | None = None,
+    heartbeat_seconds: float = 3.0,
+) -> str:
+    """Выполняет одну задачу и возвращает её итоговое состояние."""
+    conn = connect(paths.db_file)
+    store = LeadStore(paths.leads_file)
+    settings = get_settings(conn)
+    try:
+        new_ids = [lead["id"] for lead in store.snapshot().leads if lead["status"] == STATUS_NEW]
+    except LeadError as error:
+        jobs.finish(
+            conn, job["id"], "failed", error={"code": error.code.value, "message": error.message}
+        )
+        conn.close()
+        return "failed"
+    progress = Progress(store, new_ids)
+    stop = threading.Event()
+
+    def beat() -> None:
+        beat_conn = connect(paths.db_file)
+        try:
+            while not stop.wait(heartbeat_seconds):
+                jobs.heartbeat(beat_conn, job["id"], progress.snapshot())
+        finally:
+            beat_conn.close()
+
+    jobs.heartbeat(conn, job["id"], progress.snapshot())
+    thread = threading.Thread(target=beat, daemon=True)
+    thread.start()
+
+    def echo(line: str) -> None:
+        progress.lines.append(line)
+        logger.info("%s", line)
+
+    params = job.get("params") or {}
+    config = RunConfig(
+        leads_file=paths.leads_file,
+        runs_dir=paths.runs_dir,
+        model=str((settings.get("model") or {}).get("model") or ""),
+        today=str(params.get("today") or date.today().isoformat()),
+        batch_size=int(params.get("batch_size") or 5),
+        timeout_seconds=float(params.get("timeout") or 1800),
+    )
+    make_backend = factory or default_backend_factory(settings)
+    run: dict[str, Any] | None = None
+    try:
+        if not new_ids:
+            state = "done"
+            summary: dict[str, Any] = {"text": "Новых заявок нет.", "counts": {"found": 0}}
+        else:
+            with tempfile.NamedTemporaryFile(
+                prefix="llm-server-", suffix=".log", dir=paths.runs_dir, delete=False
+            ) as handle:
+                log = Path(handle.name)
+            with make_backend(log, echo) as backend:
+                run = asyncio.run(run_processing(config, backend, echo=echo))
+            if log.exists():
+                if log.stat().st_size:
+                    log.replace(Path(run["run_dir"]) / "llm_server.log")
+                else:
+                    log.unlink()
+            jobs.add_run(conn, job["id"], run["run_id"])
+            sync_results(conn, store.snapshot().leads, run["run_id"], analyses_from_run(run))
+            summary = summarize(run)
+            state = "done"
+    except LlmSetupError as error:
+        stop.set()
+        thread.join()
+        jobs.requeue(conn, job["id"], {"code": "LLM_SETUP", "message": str(error)})
+        conn.close()
+        return "queued"
+    except Exception as error:  # сбой обработчика не должен терять задачу молча
+        logger.exception("job %s failed", job["id"])
+        stop.set()
+        thread.join()
+        jobs.finish(
+            conn, job["id"], "failed", error={"code": "WORKER_ERROR", "message": str(error)}
+        )
+        conn.close()
+        return "failed"
+    stop.set()
+    thread.join()
+    jobs.heartbeat(conn, job["id"], progress.snapshot())
+    run_error: dict[str, Any] | None = (run or {}).get("error")
+    if (
+        run_error
+        and run_error.get("code") in jobs.TRANSIENT_ERRORS
+        and progress.snapshot().get("pending_ids")
+    ):
+        requeued = jobs.requeue(conn, job["id"], run_error)
+        conn.close()
+        return "queued" if requeued else "failed"
+    jobs.finish(conn, job["id"], state, summary=summary, error=run_error)
+    conn.close()
+    return state
+
+
+def summarize(run: dict[str, Any]) -> dict[str, Any]:
+    reconciliation = run.get("reconciliation") or {}
+    run_dir = Path(run["run_dir"])
+    text_path = run_dir / "summary.md"
+    return {
+        "run_id": run["run_id"],
+        "status": run.get("status"),
+        "text": text_path.read_text(encoding="utf-8") if text_path.exists() else "",
+        "counts": reconciliation.get("counts"),
+        "failed": reconciliation.get("failed"),
+        "urgent": [
+            {
+                "id": entry["id"],
+                "basis": entry.get("urgency_basis"),
+                "next": entry.get("next_action"),
+            }
+            for entry in reconciliation.get("leads") or []
+            if entry.get("priority") == "high"
+        ],
+        "metrics": run.get("metrics"),
+        "model": (run.get("runtime") or {}).get("model"),
+    }
+
+
+def run_forever(paths: AppPaths, poll_seconds: float = 2.0, once: bool = False) -> None:
+    init_db(paths.db_file)
+    conn = connect(paths.db_file)
+    stopping = threading.Event()
+
+    def handle_signal(_signum: int, _frame: object) -> None:
+        stopping.set()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, handle_signal)
+
+    recovered = jobs.recover_stale(conn)
+    if recovered:
+        logger.info("восстановлены задачи после остановки обработчика: %s", recovered)
+    logger.info("обработчик запущен: %s", paths.leads_file)
+    last_recover = time.monotonic()
+    while not stopping.is_set():
+        job = jobs.claim_next(conn)
+        if job is None:
+            if once:
+                break
+            if time.monotonic() - last_recover > 30:
+                jobs.recover_stale(conn)
+                last_recover = time.monotonic()
+            stopping.wait(poll_seconds)
+            continue
+        logger.info("задача %s: попытка %s", job["id"], job["attempts"])
+        state = execute_job(paths, job)
+        logger.info("задача %s: %s", job["id"], state)
+        if state == "queued":
+            stopping.wait(10)  # пауза перед повтором после временной ошибки
+    conn.close()
+
+
+def main(argv: list[str] | None = None) -> int:
+    use_utf8_console()
+    parser = argparse.ArgumentParser(prog="leads-worker", description="Фоновый обработчик заявок")
+    parser.add_argument("--once", action="store_true", help="выполнить очередь и выйти")
+    args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    paths = AppPaths.from_env()
+    paths.ensure()
+    run_forever(paths, once=args.once)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
+__all__ = ["execute_job", "json", "main", "run_forever"]

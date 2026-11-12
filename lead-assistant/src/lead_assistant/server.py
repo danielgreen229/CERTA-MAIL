@@ -21,7 +21,6 @@ from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field, StrictInt, StrictStr
 
 from lead_assistant import __version__
-from lead_assistant.draft_policy import check_draft
 from lead_assistant.models import (
     CATEGORIES,
     ENV_LEADS_FILE,
@@ -33,10 +32,9 @@ from lead_assistant.models import (
     PRIORITIES,
     SERVER_NAME,
     STATUS_PROCESSED,
-    ErrorCode,
     LeadError,
-    validate_update,
 )
+from lead_assistant.service import record_result
 from lead_assistant.storage import DEFAULT_LOCK_TIMEOUT_SECONDS, LeadStore, UpdateResult
 from lead_assistant.tracing import Tracer
 
@@ -169,18 +167,8 @@ def build_server(store: LeadStore, tracer: Tracer) -> MCPServer:
         ],
     ) -> dict[str, Any]:
         def write() -> UpdateResult:
-            # Порядок проверок: параметры, затем содержание черновика, затем запись.
-            update = validate_update(category, priority, status, draft_reply)
-            if update.draft_reply is not None:
-                problems = check_draft(update.draft_reply, store.get_lead(id))
-                if problems:
-                    raise LeadError(
-                        ErrorCode.DRAFT_POLICY,
-                        "draft_reply states something the lead does not contain; rewrite it "
-                        "without these statements: " + "; ".join(problems),
-                        problems=problems,
-                    )
-            return store.update_lead(id, category, priority, status, draft_reply)
+            # Общий слой: параметры, затем содержание черновика, затем запись.
+            return record_result(store, id, category, priority, status, draft_reply)
 
         outcome = traced(
             "update_lead",

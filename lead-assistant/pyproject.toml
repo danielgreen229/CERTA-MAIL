@@ -10,6 +10,12 @@ requires-python = ">=3.12"
 dependencies = [
     "mcp>=2.3,<3",
     "pydantic>=2.14,<3",
+    # Рабочее место: API на Starlette/uvicorn (уже приходят с mcp), PDF и часовые пояса.
+    "starlette>=1.10,<2",
+    "uvicorn>=0.54,<1",
+    "python-multipart>=0.0.33,<1",
+    "pypdf>=6,<7",
+    "tzdata>=2025.1",
 ]
 
 [project.optional-dependencies]
@@ -22,6 +28,8 @@ process-leads = "lead_assistant.cli:main"
 leads-mcp-server = "lead_assistant.server:main"
 leads-doctor = "lead_assistant.doctor:main"
 leads-llm = "lead_assistant.llm:main"
+leads-web = "lead_assistant.web.api:main"
+leads-worker = "lead_assistant.web.worker:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

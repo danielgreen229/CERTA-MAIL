@@ -15,3 +15,11 @@ acceptance/
 .llm/
 compare/
 work/
+
+# Рабочее место: сборка интерфейса, служебная база, загрузки, начальный пароль
+web/node_modules/
+web/dist/
+data/app.db*
+data/uploads/
+data/initial-admin.txt
+.env
