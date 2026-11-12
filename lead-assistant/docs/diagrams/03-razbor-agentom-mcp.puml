@@ -1,0 +1,64 @@
+@startuml
+skinparam defaultFontName "DejaVu Sans"
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontColor #25364F
+skinparam ArrowColor #25364F
+skinparam ArrowFontColor #25364F
+skinparam ArrowFontSize 11
+skinparam ActorBorderColor #25364F
+skinparam ActorBackgroundColor #FFFFFF
+skinparam ActorFontColor #25364F
+skinparam UsecaseBorderColor #25364F
+skinparam UsecaseBackgroundColor #F3F5F8
+skinparam UsecaseFontColor #25364F
+skinparam RectangleBorderColor #25364F
+skinparam RectangleBackgroundColor #FFFFFF
+skinparam RectangleFontColor #AF2A35
+skinparam RectangleFontStyle bold
+skinparam NoteBackgroundColor #FFFFFF
+skinparam NoteBorderColor #8A94A6
+skinparam NoteFontColor #25364F
+skinparam TitleFontColor #25364F
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+left to right direction
+title Автоматический разбор заявок агентом через MCP
+
+actor "Оператор" as Op
+actor "Фоновый обработчик" as Worker
+
+rectangle "AI-помощник менеджера по заявкам" {
+  usecase "Запустить разбор\nновых заявок" as UC1
+  usecase "Получить список\nзаявок (list_leads)" as UC2
+  usecase "Прочитать заявку\n(get_lead)" as UC3
+  usecase "Определить категорию\nи срочность по цитатам" as UC4
+  usecase "Проверить цитаты\nпо тексту письма" as UC8
+  usecase "Подготовить черновик\nответа" as UC5
+  usecase "Сохранить результат\n(update_lead)" as UC6
+  usecase "Составить сводку\nдля руководителя" as UC7
+}
+
+actor "Локальная модель\n(LLM)" as Llm
+actor "MCP-сервер leads" as Mcp
+
+Worker --> UC1
+Op --> UC1
+UC1 .> UC2 : <<include>>
+UC1 .> UC3 : <<include>>
+UC1 .> UC4 : <<include>>
+UC1 .> UC6 : <<include>>
+UC1 .> UC7 : <<include>>
+UC4 .> UC8 : <<include>>
+UC1 .> UC5 : <<include>>
+UC4 --> Llm
+UC5 --> Llm
+UC2 --> Mcp
+UC3 --> Mcp
+UC6 --> Mcp
+
+note bottom of UC8
+  Срочность ставится только
+  по дословной цитате из письма
+end note
+@enduml

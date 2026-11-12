@@ -4,6 +4,7 @@ import { api, ApiError, formatDate, ROLE, type User } from '../api'
 import Icon from '../components/Icon.vue'
 import UiSelect from '../components/UiSelect.vue'
 import { soundOn, toggleSound } from '../notify'
+import { startTour } from '../onboarding'
 import { can, loadSession, session } from '../session'
 import { theme, THEME_TITLE, type ThemeMode } from '../theme'
 
@@ -124,6 +125,10 @@ onMounted(load)
         <div>
           <label>Тема оформления</label>
           <UiSelect v-model="theme" :options="THEME_OPTIONS" aria-label="Тема оформления" />
+        </div>
+        <div>
+          <label>Обучение</label>
+          <button type="button" @click="startTour"><Icon name="run" /> Пройти обучение заново</button>
         </div>
         <div>
           <label>Звук о новых письмах</label>

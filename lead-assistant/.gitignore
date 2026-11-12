@@ -26,3 +26,6 @@ data/initial-admin.txt
 data/.run/
 data/backups/
 data/acceptance-admin.txt
+
+# Журналы проверок, которые пишут scripts/acceptance.sh и collect_evidence.sh
+evidence/

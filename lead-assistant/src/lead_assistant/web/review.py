@@ -39,16 +39,50 @@ def review_reasons(
     for item in extraction.get("contradictions") or []:
         add("contradiction", f"Противоречие: {item}")
     missing = extraction.get("missing") or []
-    if missing and category != "spam":
+    # Если черновик сам спрашивает клиента о недостающем, человеку здесь проверять нечего:
+    # данные придут в ответ на черновик. Так в очередь проверки не попадают обычные заявки.
+    asks_client = bool(draft and "?" in draft)
+    if missing and category != "spam" and not asks_client:
         add("insufficient", "Не хватает сведений: " + ", ".join(missing))
-    if analysis.get("uncertain"):
-        check = analysis.get("manager_check")
-        add("weak_basis", f"Агент не уверен: {check}" if check else "Агент отметил случай спорным")
+    check = analysis.get("manager_check")
+    actionable = _actionable_notes(check, category)
+    if analysis.get("uncertain") and (actionable or not check):
+        add(
+            "weak_basis",
+            f"Агент не уверен: {' '.join(actionable)}"
+            if actionable
+            else "Агент отметил случай спорным",
+        )
     if draft and _COMMITMENT.search(draft):
         add("commitment", "Черновик касается обязательств компании (деньги, договор, сроки)")
-    if category == "spam" and analysis.get("uncertain"):
+    if category == "spam" and analysis.get("uncertain") and (actionable or not check):
         add("spam_check", "Проверьте, что это действительно спам")
     return reasons
+
+
+# Пометки, которые полезно видеть в письме, но которые сами по себе не требуют ручной
+# проверки: повтор от того же клиента, уже учтённый в срочности истёкший срок, попытка
+# управлять помощником в письме, которое и так признано спамом.
+_INFORMATIONAL = (
+    re.compile(r"^Повтор:"),
+    re.compile(r"^Названный в заявке срок уже истёк"),
+)
+_INJECTION_NOTE = re.compile(r"^Текст пытается управлять помощником")
+
+
+def _actionable_notes(check: object, category: str | None) -> list[str]:
+    """Пометки агента, ради которых письмо стоит показать человеку."""
+    if not isinstance(check, str) or not check.strip():
+        return []
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", check.strip()) if s.strip()]
+    kept = []
+    for sentence in sentences:
+        if any(p.search(sentence) for p in _INFORMATIONAL):
+            continue
+        if category == "spam" and _INJECTION_NOTE.search(sentence):
+            continue
+        kept.append(sentence)
+    return kept
 
 
 def _next_work_moment(moment: datetime, settings: dict[str, Any]) -> datetime:

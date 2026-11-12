@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lead-assistant"
-version = "2.0.0"
+version = "2.1.0"
 description = "AI-помощник менеджера по заявкам: MCP-сервер над JSON и агент на локальной модели"
 requires-python = ">=3.12"
 dependencies = [

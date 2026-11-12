@@ -1,0 +1,53 @@
+@startuml
+skinparam defaultFontName "DejaVu Sans"
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontColor #25364F
+skinparam ArrowColor #25364F
+skinparam ArrowFontColor #25364F
+skinparam ArrowFontSize 11
+skinparam ActorBorderColor #25364F
+skinparam ActorBackgroundColor #FFFFFF
+skinparam ActorFontColor #25364F
+skinparam UsecaseBorderColor #25364F
+skinparam UsecaseBackgroundColor #F3F5F8
+skinparam UsecaseFontColor #25364F
+skinparam RectangleBorderColor #25364F
+skinparam RectangleBackgroundColor #FFFFFF
+skinparam RectangleFontColor #AF2A35
+skinparam RectangleFontStyle bold
+skinparam NoteBackgroundColor #FFFFFF
+skinparam NoteBorderColor #8A94A6
+skinparam NoteFontColor #25364F
+skinparam TitleFontColor #25364F
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+left to right direction
+title Онбординг: обучение при первом входе
+
+actor "Сотрудник" as Emp
+
+rectangle "AI-помощник менеджера по заявкам" {
+  usecase "Увидеть предложение\nпройти обучение" as UC1
+  usecase "Пройти пошаговый тур\nпо кнопкам" as UC2
+  usecase "Отказаться от обучения" as UC3
+  usecase "Сохранить отметку\nо прохождении" as UC4
+  usecase "Пройти обучение заново\nиз настроек" as UC5
+}
+
+actor "Браузер" as Browser
+
+Emp --> UC1
+Emp --> UC5
+UC2 .> UC1 : <<extend>>
+UC3 .> UC1 : <<extend>>
+UC2 .> UC4 : <<include>>
+UC3 .> UC4 : <<include>>
+UC5 .> UC2 : <<include>>
+UC4 --> Browser
+
+note bottom of UC1
+  Небольшое окно появляется
+  только при первом входе
+end note
+@enduml

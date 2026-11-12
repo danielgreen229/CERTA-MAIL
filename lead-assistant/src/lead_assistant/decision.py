@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from lead_assistant.models import CATEGORIES
@@ -36,7 +36,10 @@ _CONSEQUENCE_TITLES = {
 # модель может подкрепить «последствие» любой фразой заявки (например, «ответьте немедленно»).
 _CONSEQUENCE_EVIDENCE = {
     "downtime": r"проста|остановил|остановлен|не может уехать|стоит[^.!?]{0,60}(час|сут|дн)|"
-    r"idle|downtime|standing|stopped",
+    # «линия стоит», «производство встало», «цех простаивает» — без названной длительности.
+    r"(лини\w*|производств\w*|цех\w*|конвейер\w*|завод\w*|бригад\w*|рабоч\w+|станк\w*)"
+    r"\s+(стоит|стоят|встал\w*|простаива\w*)|(стоит|стоят|встал\w*)\s+(лини|производ|цех|конвейер)|"
+    r"idle|downtime|standing|stopped|line is down",
     "damage": r"повре|разби|раздавл|слома|помят|испорч|утер|потер|пропа|недостач|"
     r"damag|broken|lost|missing|crushed",
     "delay": r"опазд|задерж|должен был|должна была|должны были|до сих пор|так и не|не приш|"
@@ -186,6 +189,30 @@ def _parse_date(value: object) -> date | None:
         return None
 
 
+_NEXT_WEEK = re.compile(r"следующ\w*\s+недел|next week", re.IGNORECASE)
+_IN_A_WEEK = re.compile(r"через\s+недел|in a week", re.IGNORECASE)
+
+
+def _calendar_floor(quote: object, lead: dict[str, Any], deadline: date | None) -> date | None:
+    """Не даёт модели «приблизить» далёкий срок.
+
+    «На следующей неделе» не раньше понедельника следующей недели, «через неделю» — не
+    раньше чем через 7 дней от даты заявки. Модель часто ставит ближайший день — и обычный
+    вопрос о статусе груза ошибочно становился срочным.
+    """
+    if deadline is None or not isinstance(quote, str):
+        return deadline
+    received = _parse_date(lead.get("date"))
+    if received is None:
+        return deadline
+    if _NEXT_WEEK.search(quote):
+        floor = received + timedelta(days=7 - received.weekday())
+        return max(deadline, floor)
+    if _IN_A_WEEK.search(quote):
+        return max(deadline, received + timedelta(days=7))
+    return deadline
+
+
 def _sentence(text: object) -> str | None:
     if not isinstance(text, str) or not text.strip():
         return None
@@ -213,7 +240,9 @@ def decide(analysis: dict[str, Any], lead: dict[str, Any], today: str) -> Decisi
     basis: list[str] = []
     current = date.fromisoformat(today)
     consequence = analysis.get("consequence")
-    deadline = _parse_date(analysis.get("deadline_date"))
+    deadline = _calendar_floor(
+        analysis.get("deadline_quote"), lead, _parse_date(analysis.get("deadline_date"))
+    )
     if consequence == "delay" and deadline is not None and deadline >= current:
         # Срок ещё не наступил: задержки нет, а вопрос о статусе — не претензия.
         consequence = "none"

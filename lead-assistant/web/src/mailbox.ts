@@ -1,4 +1,4 @@
-import { reactive } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import { api, ApiError, type Job, type LeadSummary } from './api'
 import { chime, systemNotice } from './notify'
 
@@ -35,6 +35,47 @@ export const mail = reactive({
   /** Короткое сообщение о новых письмах (всплывает внизу справа). */
   toast: '',
 })
+
+/** «Сначала важные»: неразобранные и ждущие решения — по срочности; выбор запоминается. */
+const SORT_KEY = 'leads.sort.important'
+function storedSort(): boolean {
+  try {
+    return localStorage.getItem(SORT_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+export const importantFirst = ref(storedSort())
+watch(importantFirst, (on) => {
+  try {
+    localStorage.setItem(SORT_KEY, on ? '1' : '0')
+  } catch {
+    /* выбор действует до перезагрузки */
+  }
+})
+
+const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 }
+
+/** Порядок «сначала важные»: ждущие ответа выше решённых; среди них — высокая срочность,
+ * просроченные, ближайший срок ответа; решённые остаются внизу в прежнем порядке. */
+export function sortImportant(leads: LeadSummary[]): LeadSummary[] {
+  const open = (l: LeadSummary) => l.state === 'new' || l.state === 'pending'
+  const due = (l: LeadSummary) => (l.due_at ? Date.parse(l.due_at) : Number.POSITIVE_INFINITY)
+  return leads
+    .map((lead, index) => ({ lead, index }))
+    .sort((a, b) => {
+      const oa = open(a.lead) ? 0 : 1
+      const ob = open(b.lead) ? 0 : 1
+      if (oa !== ob) return oa - ob
+      if (oa === 1) return a.index - b.index
+      const pa = PRIORITY_RANK[a.lead.priority ?? ''] ?? 1.5
+      const pb = PRIORITY_RANK[b.lead.priority ?? ''] ?? 1.5
+      if (pa !== pb) return pa - pb
+      if (a.lead.overdue !== b.lead.overdue) return a.lead.overdue ? -1 : 1
+      return due(a.lead) - due(b.lead) || a.index - b.index
+    })
+    .map((item) => item.lead)
+}
 
 let knownTotal: number | null = null
 let toastTimer: number | undefined

@@ -1,0 +1,57 @@
+@startuml
+skinparam defaultFontName "DejaVu Sans"
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontColor #25364F
+skinparam ArrowColor #25364F
+skinparam ArrowFontColor #25364F
+skinparam ArrowFontSize 11
+skinparam ActorBorderColor #25364F
+skinparam ActorBackgroundColor #FFFFFF
+skinparam ActorFontColor #25364F
+skinparam UsecaseBorderColor #25364F
+skinparam UsecaseBackgroundColor #F3F5F8
+skinparam UsecaseFontColor #25364F
+skinparam RectangleBorderColor #25364F
+skinparam RectangleBackgroundColor #FFFFFF
+skinparam RectangleFontColor #AF2A35
+skinparam RectangleFontStyle bold
+skinparam NoteBackgroundColor #FFFFFF
+skinparam NoteBorderColor #8A94A6
+skinparam NoteFontColor #25364F
+skinparam TitleFontColor #25364F
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+left to right direction
+title Качество разбора и уведомления
+
+actor "Менеджер" as Mgr
+actor "Руководитель" as Sup
+Mgr <|-- Sup
+
+rectangle "AI-помощник менеджера по заявкам" {
+  usecase "Просмотреть метрики\nкачества ответов" as UC1
+  usecase "Просмотреть случаи\nисправлений и отказов" as UC2
+  usecase "Просмотреть историю\nразборов" as UC3
+  usecase "Отменить запущенный\nразбор" as UC4
+  usecase "Получать уведомления\nо новых письмах" as UC5
+  usecase "Проиграть звук" as UC6
+  usecase "Показать системное\nуведомление" as UC7
+}
+
+actor "Браузер" as Browser
+
+Sup --> UC1
+Sup --> UC3
+Mgr --> UC5
+UC2 .> UC1 : <<extend>>
+UC4 .> UC3 : <<extend>>
+UC5 .> UC6 : <<include>>
+UC7 .> UC5 : <<extend>>
+UC7 --> Browser
+
+note bottom of UC7
+  Только если сотрудник
+  разрешил уведомления
+end note
+@enduml

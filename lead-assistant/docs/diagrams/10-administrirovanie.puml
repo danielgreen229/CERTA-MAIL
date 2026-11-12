@@ -1,0 +1,59 @@
+@startuml
+skinparam defaultFontName "DejaVu Sans"
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontColor #25364F
+skinparam ArrowColor #25364F
+skinparam ArrowFontColor #25364F
+skinparam ArrowFontSize 11
+skinparam ActorBorderColor #25364F
+skinparam ActorBackgroundColor #FFFFFF
+skinparam ActorFontColor #25364F
+skinparam UsecaseBorderColor #25364F
+skinparam UsecaseBackgroundColor #F3F5F8
+skinparam UsecaseFontColor #25364F
+skinparam RectangleBorderColor #25364F
+skinparam RectangleBackgroundColor #FFFFFF
+skinparam RectangleFontColor #AF2A35
+skinparam RectangleFontStyle bold
+skinparam NoteBackgroundColor #FFFFFF
+skinparam NoteBorderColor #8A94A6
+skinparam NoteFontColor #25364F
+skinparam TitleFontColor #25364F
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+left to right direction
+title Администрирование
+
+actor "Менеджер" as Mgr
+actor "Руководитель" as Sup
+actor "Администратор" as Adm
+Mgr <|-- Sup
+Sup <|-- Adm
+
+rectangle "AI-помощник менеджера по заявкам" {
+  usecase "Изменить личные\nнастройки" as UC8
+  usecase "Настроить сроки ответа\nи рабочее время" as UC1
+  usecase "Вести отделы" as UC2
+  usecase "Вести сотрудников\nи роли" as UC3
+  usecase "Выбрать модель\nпомощника" as UC4
+  usecase "Просмотреть журнал\nдействий" as UC5
+  usecase "Создать резервную копию\n(leads-backup)" as UC6
+  usecase "Восстановить из\nрезервной копии" as UC7
+}
+
+Mgr --> UC8
+Adm --> UC1
+Adm --> UC2
+Adm --> UC3
+Adm --> UC4
+Adm --> UC5
+Adm --> UC6
+Adm --> UC7
+
+note bottom of UC7
+  Резервная копия и восстановление
+  выполняются командой leads-backup
+  на сервере
+end note
+@enduml

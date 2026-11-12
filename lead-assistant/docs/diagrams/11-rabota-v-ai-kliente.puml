@@ -1,0 +1,59 @@
+@startuml
+skinparam defaultFontName "DejaVu Sans"
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontColor #25364F
+skinparam ArrowColor #25364F
+skinparam ArrowFontColor #25364F
+skinparam ArrowFontSize 11
+skinparam ActorBorderColor #25364F
+skinparam ActorBackgroundColor #FFFFFF
+skinparam ActorFontColor #25364F
+skinparam UsecaseBorderColor #25364F
+skinparam UsecaseBackgroundColor #F3F5F8
+skinparam UsecaseFontColor #25364F
+skinparam RectangleBorderColor #25364F
+skinparam RectangleBackgroundColor #FFFFFF
+skinparam RectangleFontColor #AF2A35
+skinparam RectangleFontStyle bold
+skinparam NoteBackgroundColor #FFFFFF
+skinparam NoteBorderColor #8A94A6
+skinparam NoteFontColor #25364F
+skinparam TitleFontColor #25364F
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+left to right direction
+title Работа в AI-клиенте (Claude Code)
+
+actor "Разработчик /\nОператор" as Dev
+actor "Модель в AI-клиенте\n(Claude Code)" as Client
+
+rectangle "AI-помощник менеджера по заявкам" {
+  usecase "Вызвать команду\n/process-leads" as UC1
+  usecase "Подключить правила\nразбора" as UC2
+  usecase "Увидеть три\nMCP-инструмента" as UC3
+  usecase "Вызвать list_leads" as UC4
+  usecase "Вызвать get_lead" as UC5
+  usecase "Вызвать update_lead" as UC6
+  usecase "Получить сводку\nпо заявкам" as UC7
+}
+
+actor "MCP-сервер leads" as Mcp
+
+Dev --> UC1
+Dev --> UC7
+UC1 .> UC2 : <<include>>
+UC1 .> UC3 : <<include>>
+Client --> UC3
+Client --> UC4
+Client --> UC5
+Client --> UC6
+UC4 --> Mcp
+UC5 --> Mcp
+UC6 --> Mcp
+
+note bottom of UC3
+  Разрешены только
+  инструменты сервера leads
+end note
+@enduml

@@ -1,4 +1,0 @@
-Сессия 20261111T220601Z-a0b7a6: C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant\surrogate\real\runs\20261111T220601Z-a0b7a6
-export LEADS_FILE="C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant\surrogate\real\leads.json"
-export LEADS_TRACE_FILE="C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant\surrogate\real\runs\20261111T220601Z-a0b7a6\mcp_trace.jsonl"
-export LEADS_RUN_ID="20261111T220601Z-a0b7a6"

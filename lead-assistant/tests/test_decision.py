@@ -250,3 +250,34 @@ def test_spam_and_low_priority_need_explicit_grounds() -> None:
     )
     assert real.category == "sale" and real.uncertain
     assert any("Суть обращения не определена" in note for note in real.notes)
+
+
+@pytest.mark.parametrize(
+    "quote",
+    ["линия стоит", "производство встало", "цех простаивает", "стоит линия упаковки"],
+)
+def test_production_downtime_without_duration_is_urgent(quote: str) -> None:
+    text = f"Фура с комплектующими должна была прийти вчера, {quote}. Сообщите статус."
+    decision = decide(
+        analysis(kind="complaint", consequence="downtime", consequence_quote=quote),
+        lead(text),
+        TODAY,
+    )
+    assert decision.priority == "high" and "простой" in str(decision.urgency_basis)
+
+
+def test_next_week_is_not_pulled_into_the_urgent_window() -> None:
+    # Четверг 12 ноября: «на следующей неделе» — не раньше понедельника 16-го (4 дня).
+    text = "Подскажите, где сейчас груз по накладной 55120? Ожидаем его на следующей неделе."
+    decision = decide(
+        analysis(deadline_quote="Ожидаем его на следующей неделе", deadline_date="2026-11-14"),
+        lead(text, date="2026-11-12"),
+        "2026-11-12",
+    )
+    assert decision.priority == "medium"
+    in_a_week = decide(
+        analysis(deadline_quote="нужно через неделю", deadline_date="2026-11-13"),
+        lead("Отправка нужна через неделю.", date="2026-11-12"),
+        "2026-11-12",
+    )
+    assert in_a_week.priority == "medium"

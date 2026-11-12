@@ -13,9 +13,8 @@ import json
 import logging
 import os
 import sqlite3
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 import uvicorn
@@ -32,12 +31,17 @@ from lead_assistant.extract import extract
 from lead_assistant.models import LeadError
 from lead_assistant.storage import LeadStore
 from lead_assistant.web import auth, connectors, export, jobs, kb, leads, outbox, quality
-from lead_assistant.web.config import AppPaths
+from lead_assistant.web.config import ENV_HOST, ENV_PORT, AppPaths
 from lead_assistant.web.db import audit, connect, get_settings, init_db, lead_key, put_setting
 
 logger = logging.getLogger("lead_assistant.api")
 COOKIE = "leads_session"
-type Handler = Callable[[Request], Response]
+INITIAL_ADMIN_FILE = "initial-admin.txt"
+SECONDS_PER_DAY = 86400
+AUDIT_LIMIT = 200
+# Пока начальный пароль не сменён, доступны только эти методы.
+PASSWORD_CHANGE_PATHS = ("/api/auth/me", "/api/auth/password", "/api/auth/logout")
+SETTING_KEYS = ("timezone", "work_hours", "sla_hours", "assignment", "model")
 
 
 class ApiError(Exception):
@@ -49,11 +53,21 @@ class ApiError(Exception):
         self.details = details
 
 
+@contextlib.contextmanager
+def _auth_errors(status: int) -> Iterator[None]:
+    """Ошибка входа или смены пароля → ответ API с тем же кодом."""
+    try:
+        yield
+    except auth.AuthError as error:
+        raise ApiError(status, error.code, error.message) from error
+
+
 def create_app(paths: AppPaths) -> Starlette:
     paths.ensure()
     init_db(paths.db_file)
+    initial_admin = paths.data_dir / INITIAL_ADMIN_FILE
     with contextlib.closing(connect(paths.db_file)) as conn:
-        password = auth.bootstrap_admin(conn, paths.data_dir / "initial-admin.txt")
+        password = auth.bootstrap_admin(conn, initial_admin)
         admin = conn.execute("SELECT id FROM users WHERE login = 'admin'").fetchone()
         if admin is not None:
             applied = connectors.apply_env_presets(conn, os.environ, int(admin[0]))
@@ -62,7 +76,7 @@ def create_app(paths: AppPaths) -> Starlette:
     if password:
         logger.warning(
             "создан администратор admin; начальный пароль записан в %s (смените при входе)",
-            paths.data_dir / "initial-admin.txt",
+            initial_admin,
         )
     store = LeadStore(paths.leads_file)
 
@@ -82,15 +96,19 @@ def create_app(paths: AppPaths) -> Starlette:
             raise ApiError(401, "UNAUTHENTICATED", "Войдите в систему")
         if request.method != "GET" and request.headers.get("x-requested-with") != "lead-assistant":
             raise ApiError(403, "CSRF", "Запрос без заголовка приложения отклонён")
-        if user.must_change_password and request.url.path not in (
-            "/api/auth/me",
-            "/api/auth/password",
-            "/api/auth/logout",
-        ):
+        if user.must_change_password and request.url.path not in PASSWORD_CHANGE_PATHS:
             raise ApiError(403, "PASSWORD_CHANGE_REQUIRED", "Смените начальный пароль")
         if not user.has_role(role):
             raise ApiError(403, "FORBIDDEN", "Недостаточно прав для этого действия")
         return user
+
+    @contextlib.contextmanager
+    def authorized(
+        request: Request, role: str = "manager"
+    ) -> Iterator[tuple[sqlite3.Connection, auth.User]]:
+        """Соединение с базой и пользователь, чьи права уже проверены для этого запроса."""
+        with db() as conn:
+            yield conn, current_user(request, conn, role)
 
     async def body(request: Request) -> dict[str, Any]:
         try:
@@ -105,20 +123,17 @@ def create_app(paths: AppPaths) -> Starlette:
 
     async def login(request: Request) -> Response:
         data = await body(request)
-        with db() as conn:
-            try:
-                user, token = auth.login(
-                    conn, str(data.get("login", "")), str(data.get("password", ""))
-                )
-            except auth.AuthError as error:
-                raise ApiError(401, error.code, error.message) from error
+        with db() as conn, _auth_errors(401):
+            user, token = auth.login(
+                conn, str(data.get("login", "")), str(data.get("password", ""))
+            )
         response = JSONResponse({"user": user.to_dict()})
         response.set_cookie(
             COOKIE,
             token,
             httponly=True,
             samesite="strict",
-            max_age=auth.SESSION_DAYS * 86400,
+            max_age=auth.SESSION_DAYS * SECONDS_PER_DAY,
             secure=request.url.scheme == "https",
         )
         return response
@@ -133,8 +148,7 @@ def create_app(paths: AppPaths) -> Starlette:
         return response
 
     def me(request: Request) -> Response:
-        with db() as conn:
-            user = current_user(request, conn)
+        with authorized(request) as (conn, user):
             settings = get_settings(conn)
         return JSONResponse(
             {
@@ -146,52 +160,23 @@ def create_app(paths: AppPaths) -> Starlette:
 
     async def change_password(request: Request) -> Response:
         data = await body(request)
-        with db() as conn:
-            user = current_user(request, conn)
-            try:
-                auth.change_password(conn, user, str(data.get("old", "")), str(data.get("new", "")))
-            except auth.AuthError as error:
-                raise ApiError(400, error.code, error.message) from error
-        (paths.data_dir / "initial-admin.txt").unlink(missing_ok=True)
+        with authorized(request) as (conn, user), _auth_errors(400):
+            auth.change_password(conn, user, str(data.get("old", "")), str(data.get("new", "")))
+        initial_admin.unlink(missing_ok=True)
         return JSONResponse({"ok": True})
 
     # --- заявки -------------------------------------------------------------
 
     def list_leads(request: Request) -> Response:
-        with db() as conn:
-            current_user(request, conn)
+        with authorized(request) as (conn, _user):
             views = leads.all_views(conn, store)
             filtered = leads.newest_first(leads.filter_views(views, dict(request.query_params)))
-            counts = {
-                "total": len(views),
-                "new": sum(v.state == "new" for v in views),
-                "pending": sum(v.state == "pending" for v in views),
-                "needs_review": sum(v.summary()["needs_review"] for v in views),
-                "high": sum(v.lead.get("priority") == "high" for v in views),
-                "overdue": sum(v.summary()["overdue"] for v in views),
-            }
-            # Счётчики «папок» левой панели: по состоянию, категории и срочности внутри источника.
-            folders: dict[str, int] = {}
-            for view in views:
-                source = leads.source_of(view.lead)
-                for key in (
-                    f"state:{view.state}",
-                    f"category:{view.lead.get('category')}",
-                    f"source:{source}|priority:{view.lead.get('priority')}",
-                    # «Непрочитанные»: ждут агента или решения менеджера.
-                    *(
-                        [f"open:source:{source}|priority:{view.lead.get('priority')}"]
-                        if view.state in ("new", "pending")
-                        else []
-                    ),
-                ):
-                    folders[key] = folders.get(key, 0) + 1
             active = jobs.active_job(conn)
         return JSONResponse(
             {
                 "leads": [v.summary() for v in filtered],
-                "counts": counts,
-                "folders": folders,
+                "counts": _lead_counts(views),
+                "folders": _folder_counts(views),
                 "sources": leads.source_tabs(views),
                 "active_job": active,
             }
@@ -202,15 +187,12 @@ def create_app(paths: AppPaths) -> Starlette:
         view = leads.find_view(conn, store, key)
         detail = view.detail(leads.history(conn, key))
         detail["knowledge"] = kb.search(conn, user, str(view.lead.get("text") or ""), limit=3)
-        shipments = []
         numbers = dict.fromkeys(  # номер, упомянутый в письме дважды, запрашивается один раз
             str(item["value"]["number"]) for item in view.extraction["fields"].get("order") or []
         )
-        for number in numbers:
-            status = connectors.shipment_status(conn, number)
-            if status:
-                shipments.append(status)
-        detail["shipments"] = shipments
+        detail["shipments"] = [
+            status for number in numbers if (status := connectors.shipment_status(conn, number))
+        ]
         detail["reply"] = outbox.reply_info(conn, view.lead)
         detail["replies"] = outbox.sent_replies(conn, key)
         return detail
@@ -218,8 +200,7 @@ def create_app(paths: AppPaths) -> Starlette:
     async def send_reply(request: Request) -> Response:
         key = request.path_params["key"]
         data = await body(request)
-        with db() as conn:
-            user = current_user(request, conn)
+        with authorized(request) as (conn, user):
             view = leads.find_view(conn, store, key)
             sent = outbox.send_reply(
                 conn, view.lead, user.id, data.get("text"), force=bool(data.get("force"))
@@ -229,8 +210,7 @@ def create_app(paths: AppPaths) -> Starlette:
 
     def export_leads(request: Request) -> Response:
         fmt = str(request.query_params.get("format") or "json").lower()
-        with db() as conn:
-            current_user(request, conn)
+        with authorized(request) as (conn, _user):
             views = leads.newest_first(
                 leads.filter_views(leads.all_views(conn, store), dict(request.query_params))
             )
@@ -243,15 +223,13 @@ def create_app(paths: AppPaths) -> Starlette:
         )
 
     def lead_detail(request: Request) -> Response:
-        with db() as conn:
-            user = current_user(request, conn)
+        with authorized(request) as (conn, user):
             return JSONResponse(full_detail(conn, user, request.path_params["key"]))
 
     async def decide(request: Request) -> Response:
         key = request.path_params["key"]
         data = await body(request)
-        with db() as conn:
-            user = current_user(request, conn)
+        with authorized(request) as (conn, user):
             outcome = leads.decide(
                 conn,
                 store,
@@ -270,8 +248,7 @@ def create_app(paths: AppPaths) -> Starlette:
     async def assign(request: Request) -> Response:
         key = request.path_params["key"]
         data = await body(request)
-        with db() as conn:
-            user = current_user(request, conn)
+        with authorized(request) as (conn, user):
             leads.find_view(conn, store, key)
             leads.assign(conn, key, user, data.get("assignee"), data.get("due_at"))
         return JSONResponse({"ok": True})
@@ -280,41 +257,35 @@ def create_app(paths: AppPaths) -> Starlette:
 
     async def create_job(request: Request) -> Response:
         data = await body(request)
-        with db() as conn:
-            user = current_user(request, conn)
+        with authorized(request) as (conn, user):
             params = {k: data[k] for k in ("today", "batch_size") if data.get(k)}
             job = jobs.create_job(conn, user.id, params)
         return JSONResponse({"job": job}, status_code=202)
 
     def list_jobs(request: Request) -> Response:
-        with db() as conn:
-            current_user(request, conn)
+        with authorized(request) as (conn, _user):
             return JSONResponse({"jobs": jobs.list_jobs(conn)})
 
     def get_job(request: Request) -> Response:
-        with db() as conn:
-            current_user(request, conn)
+        with authorized(request) as (conn, _user):
             job = jobs.get_job(conn, request.path_params["job_id"])
         if job is None:
             raise ApiError(404, "NOT_FOUND", "Задача не найдена")
         return JSONResponse({"job": job})
 
     def cancel_job(request: Request) -> Response:
-        with db() as conn:
-            user = current_user(request, conn)
+        with authorized(request) as (conn, user):
             jobs.cancel(conn, request.path_params["job_id"], user.id)
         return JSONResponse({"ok": True})
 
     # --- качество -----------------------------------------------------------
 
     def get_quality(request: Request) -> Response:
-        with db() as conn:
-            current_user(request, conn, "supervisor")
+        with authorized(request, "supervisor") as (conn, _user):
             return JSONResponse(quality.metrics(conn))
 
     def export_cases(request: Request) -> Response:
-        with db() as conn:
-            current_user(request, conn, "supervisor")
+        with authorized(request, "supervisor") as (conn, _user):
             by_key = {lead_key(lead["id"]): lead for lead in store.snapshot().leads}
             data = quality.corrections_as_cases(conn, by_key)
         return Response(
@@ -326,8 +297,7 @@ def create_app(paths: AppPaths) -> Starlette:
     # --- база знаний --------------------------------------------------------
 
     def kb_documents(request: Request) -> Response:
-        with db() as conn:
-            user = current_user(request, conn)
+        with authorized(request) as (conn, user):
             return JSONResponse(
                 {
                     "documents": kb.list_documents(conn, user),
@@ -346,8 +316,7 @@ def create_app(paths: AppPaths) -> Starlette:
                 for k in ("title", "version", "owner", "valid_from", "valid_to", "min_role")
             }
             filename = upload.filename or ""
-        with db() as conn:
-            user = current_user(request, conn, "supervisor")
+        with authorized(request, "supervisor") as (conn, user):
             document = kb.add_document(
                 conn,
                 paths.uploads_dir,
@@ -364,84 +333,69 @@ def create_app(paths: AppPaths) -> Starlette:
         return JSONResponse({"document": document}, status_code=201)
 
     def kb_delete(request: Request) -> Response:
-        with db() as conn:
-            user = current_user(request, conn, "supervisor")
+        with authorized(request, "supervisor") as (conn, user):
             kb.delete_document(conn, user, int(request.path_params["doc_id"]))
         return JSONResponse({"ok": True})
 
     def kb_search(request: Request) -> Response:
-        with db() as conn:
-            user = current_user(request, conn)
+        with authorized(request) as (conn, user):
             return JSONResponse(kb.search(conn, user, request.query_params.get("q", ""), limit=10))
 
     def kb_chunk(request: Request) -> Response:
-        with db() as conn:
-            user = current_user(request, conn)
+        with authorized(request) as (conn, user):
             return JSONResponse(kb.get_chunk(conn, user, int(request.path_params["chunk_id"])))
 
     # --- подключения и настройки -------------------------------------------
 
     def list_connectors(request: Request) -> Response:
-        with db() as conn:
-            user = current_user(request, conn)
+        with authorized(request) as (conn, user):
             return JSONResponse({"connectors": connectors.list_connectors(conn, user)})
 
-    def managed(conn: sqlite3.Connection, user: auth.User, name: str) -> None:
-        if not connectors.can_manage(conn, name, user):
-            raise ApiError(
-                403,
-                "FORBIDDEN",
-                "Это подключение может менять только его владелец или администратор",
-            )
+    @contextlib.contextmanager
+    def managed(request: Request) -> Iterator[tuple[sqlite3.Connection, auth.User, str]]:
+        """Как ``authorized``, но ещё и право менять подключение из пути запроса."""
+        name = request.path_params["name"]
+        with authorized(request) as (conn, user):
+            if not connectors.can_manage(conn, name, user):
+                raise ApiError(
+                    403,
+                    "FORBIDDEN",
+                    "Это подключение может менять только его владелец или администратор",
+                )
+            yield conn, user, name
 
     async def configure_connector(request: Request) -> Response:
         data = await body(request)
-        name = request.path_params["name"]
-        with db() as conn:
-            user = current_user(request, conn)
-            managed(conn, user, name)
+        with managed(request) as (conn, user, name):
             return JSONResponse(connectors.configure(conn, name, data, user.id))
 
-    async def add_mailbox(request: Request) -> Response:
+    async def add_connector(request: Request) -> Response:
         data = await body(request) if await request.body() else {}
-        with db() as conn:
-            user = current_user(request, conn)
+        with authorized(request) as (conn, user):
             kind = str(data.get("kind") or "email")
             return JSONResponse(connectors.add_connector(conn, kind, user.id), status_code=201)
 
-    def remove_mailbox(request: Request) -> Response:
-        name = request.path_params["name"]
-        with db() as conn:
-            user = current_user(request, conn)
-            managed(conn, user, name)
+    def remove_connector(request: Request) -> Response:
+        with managed(request) as (conn, user, name):
             connectors.remove_connector(conn, name, user.id)
         return JSONResponse({"ok": True})
 
     def check_connector(request: Request) -> Response:
-        name = request.path_params["name"]
-        with db() as conn:
-            user = current_user(request, conn)
-            managed(conn, user, name)
+        with managed(request) as (conn, user, name):
             return JSONResponse(connectors.check(conn, name, user.id))
 
     def import_connector(request: Request) -> Response:
-        name = request.path_params["name"]
-        with db() as conn:
-            user = current_user(request, conn)
-            managed(conn, user, name)
+        with managed(request) as (conn, user, name):
             return JSONResponse(connectors.import_messages(conn, store, name, user.id))
 
     def get_settings_view(request: Request) -> Response:
-        with db() as conn:
-            current_user(request, conn)
+        with authorized(request) as (conn, _user):
             return JSONResponse(get_settings(conn))
 
     async def put_settings(request: Request) -> Response:
         data = await body(request)
-        allowed = ("timezone", "work_hours", "sla_hours", "assignment", "model")
-        with db() as conn:
-            user = current_user(request, conn, "admin")
-            for key in allowed:
+        with authorized(request, "admin") as (conn, user):
+            for key in SETTING_KEYS:
                 if key in data:
                     _validate_setting(key, data[key])
                     put_setting(conn, key, data[key])
@@ -451,45 +405,39 @@ def create_app(paths: AppPaths) -> Starlette:
                 "settings_changed",
                 user.id,
                 "settings",
-                keys=[k for k in allowed if k in data],
+                keys=[k for k in SETTING_KEYS if k in data],
             )
             return JSONResponse(get_settings(conn))
 
     def list_assignees(request: Request) -> Response:
-        with db() as conn:
-            current_user(request, conn)
+        with authorized(request) as (conn, _user):
             return JSONResponse(leads.assignees(conn))
 
     def list_users(request: Request) -> Response:
-        with db() as conn:
-            current_user(request, conn, "admin")
+        with authorized(request, "admin") as (conn, _user):
             return JSONResponse({"users": [u.to_dict() for u in auth.list_users(conn)]})
 
     async def create_user(request: Request) -> Response:
         data = await body(request)
-        with db() as conn:
-            admin = current_user(request, conn, "admin")
-            try:
-                user = auth.create_user(
-                    conn,
-                    str(data.get("login", "")),
-                    str(data.get("name", "")),
-                    str(data.get("role", "")),
-                    str(data.get("password", "")),
-                    True,
-                    admin.id,
-                )
-            except auth.AuthError as error:
-                raise ApiError(400, error.code, error.message) from error
+        with authorized(request, "admin") as (conn, admin), _auth_errors(400):
+            user = auth.create_user(
+                conn,
+                str(data.get("login", "")),
+                str(data.get("name", "")),
+                str(data.get("role", "")),
+                str(data.get("password", "")),
+                True,
+                admin.id,
+            )
         return JSONResponse({"user": user.to_dict()}, status_code=201)
 
     def audit_log(request: Request) -> Response:
-        with db() as conn:
-            current_user(request, conn, "supervisor")
+        with authorized(request, "supervisor") as (conn, _user):
             rows = conn.execute(
                 "SELECT a.*, u.name AS user_name FROM audit a "
                 "LEFT JOIN users u ON u.id = a.user_id "
-                "ORDER BY a.id DESC LIMIT 200"
+                "ORDER BY a.id DESC LIMIT ?",
+                (AUDIT_LIMIT,),
             ).fetchall()
         return JSONResponse(
             {
@@ -579,9 +527,9 @@ def create_app(paths: AppPaths) -> Starlette:
         Route("/api/kb/search", kb_search),
         Route("/api/kb/chunks/{chunk_id:int}", kb_chunk),
         Route("/api/connectors", list_connectors),
-        Route("/api/connectors", add_mailbox, methods=["POST"]),
+        Route("/api/connectors", add_connector, methods=["POST"]),
         Route("/api/connectors/{name}", configure_connector, methods=["PUT"]),
-        Route("/api/connectors/{name}", remove_mailbox, methods=["DELETE"]),
+        Route("/api/connectors/{name}", remove_connector, methods=["DELETE"]),
         Route("/api/connectors/{name}/check", check_connector, methods=["POST"]),
         Route("/api/connectors/{name}/import", import_connector, methods=["POST"]),
         Route("/api/settings", get_settings_view),
@@ -598,34 +546,7 @@ def create_app(paths: AppPaths) -> Starlette:
     routes.append(Route("/{path:path}", spa))
 
     def on_error(_request: Request, exc: Exception) -> Response:
-        if isinstance(exc, ApiError):
-            status, code, message, details = exc.status, exc.code, exc.message, exc.details
-        elif isinstance(exc, leads.DecisionError):
-            status = {"NOT_FOUND": 404, "CONFLICT": 409, "DUPLICATE": 409}.get(exc.code, 400)
-            code, message, details = exc.code, exc.message, exc.details
-        elif isinstance(exc, jobs.JobError):
-            status, code, message, details = 409, exc.code, exc.message, exc.details
-        elif isinstance(exc, kb.KbError):
-            status = 404 if exc.code == "NOT_FOUND" else 413 if exc.code == "TOO_LARGE" else 400
-            code, message, details = exc.code, exc.message, {}
-        elif isinstance(exc, connectors.ConnectorError):
-            status = 404 if exc.code == "NOT_FOUND" else 409
-            code, message, details = exc.code, exc.message, {}
-        elif isinstance(exc, outbox.OutboxError):
-            status = {"INVALID_ARGUMENT": 400, "SEND_FAILED": 502}.get(exc.code, 409)
-            code, message, details = exc.code, exc.message, {}
-        elif isinstance(exc, export.ExportError):
-            status, code, message, details = 400, exc.code, exc.message, {}
-        elif isinstance(exc, LeadError):
-            status = {"NOT_FOUND": 404, "CONFLICT": 409, "INVALID_ARGUMENT": 400}.get(
-                exc.code.value, 503
-            )
-            code, message, details = exc.code.value, exc.message, exc.details
-        elif isinstance(exc, HTTPException):
-            status, code, message, details = exc.status_code, "HTTP", str(exc.detail), {}
-        else:
-            logger.exception("необработанная ошибка API")
-            status, code, message, details = 500, "INTERNAL", "Внутренняя ошибка сервера", {}
+        status, code, message, details = _error_parts(exc)
         return JSONResponse(
             {"error": {"code": code, "message": message, **_jsonable(details)}}, status_code=status
         )
@@ -643,6 +564,66 @@ def create_app(paths: AppPaths) -> Starlette:
         export.ExportError: on_error,
     }
     return Starlette(routes=routes, exception_handlers=exception_handlers)
+
+
+def _lead_counts(views: list[leads.LeadView]) -> dict[str, int]:
+    summaries = [view.summary() for view in views]
+    return {
+        "total": len(views),
+        "new": sum(v.state == "new" for v in views),
+        "pending": sum(v.state == "pending" for v in views),
+        "needs_review": sum(s["needs_review"] for s in summaries),
+        "high": sum(v.lead.get("priority") == "high" for v in views),
+        "overdue": sum(s["overdue"] for s in summaries),
+    }
+
+
+def _folder_counts(views: list[leads.LeadView]) -> dict[str, int]:
+    """Счётчики «папок» левой панели: по состоянию, категории и срочности внутри источника."""
+    folders: dict[str, int] = {}
+    for view in views:
+        source = leads.source_of(view.lead)
+        priority = view.lead.get("priority")
+        keys = [
+            f"state:{view.state}",
+            f"category:{view.lead.get('category')}",
+            f"source:{source}|priority:{priority}",
+        ]
+        # «Непрочитанные»: ждут агента или решения менеджера.
+        if view.state in ("new", "pending"):
+            keys.append(f"open:source:{source}|priority:{priority}")
+        for key in keys:
+            folders[key] = folders.get(key, 0) + 1
+    return folders
+
+
+def _error_parts(exc: Exception) -> tuple[int, str, str, dict[str, Any]]:
+    """Ошибка предметного модуля → HTTP-статус, код, сообщение и подробности ответа."""
+    if isinstance(exc, ApiError):
+        return exc.status, exc.code, exc.message, exc.details
+    if isinstance(exc, leads.DecisionError):
+        status = {"NOT_FOUND": 404, "CONFLICT": 409, "DUPLICATE": 409}.get(exc.code, 400)
+        return status, exc.code, exc.message, exc.details
+    if isinstance(exc, jobs.JobError):
+        return 409, exc.code, exc.message, exc.details
+    if isinstance(exc, kb.KbError):
+        status = 404 if exc.code == "NOT_FOUND" else 413 if exc.code == "TOO_LARGE" else 400
+        return status, exc.code, exc.message, {}
+    if isinstance(exc, connectors.ConnectorError):
+        return (404 if exc.code == "NOT_FOUND" else 409), exc.code, exc.message, {}
+    if isinstance(exc, outbox.OutboxError):
+        status = {"INVALID_ARGUMENT": 400, "SEND_FAILED": 502}.get(exc.code, 409)
+        return status, exc.code, exc.message, {}
+    if isinstance(exc, export.ExportError):
+        return 400, exc.code, exc.message, {}
+    if isinstance(exc, LeadError):
+        code = exc.code.value
+        status = {"NOT_FOUND": 404, "CONFLICT": 409, "INVALID_ARGUMENT": 400}.get(code, 503)
+        return status, code, exc.message, exc.details
+    if isinstance(exc, HTTPException):
+        return exc.status_code, "HTTP", str(exc.detail), {}
+    logger.exception("необработанная ошибка API")
+    return 500, "INTERNAL", "Внутренняя ошибка сервера", {}
 
 
 def _jsonable(details: dict[str, Any]) -> dict[str, Any]:
@@ -681,10 +662,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", default=None)
     parser.add_argument("--port", type=int, default=None)
     args = parser.parse_args(argv)
-    import os
-
-    from lead_assistant.web.config import ENV_HOST, ENV_PORT
-
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     paths = AppPaths.from_env()
     app = create_app(paths)
@@ -698,4 +675,4 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
-__all__ = ["Path", "create_app", "main"]
+__all__ = ["create_app", "main"]

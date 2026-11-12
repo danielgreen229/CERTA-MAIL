@@ -1,0 +1,54 @@
+@startuml
+skinparam defaultFontName "DejaVu Sans"
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontColor #25364F
+skinparam ArrowColor #25364F
+skinparam ArrowFontColor #25364F
+skinparam ArrowFontSize 11
+skinparam ActorBorderColor #25364F
+skinparam ActorBackgroundColor #FFFFFF
+skinparam ActorFontColor #25364F
+skinparam UsecaseBorderColor #25364F
+skinparam UsecaseBackgroundColor #F3F5F8
+skinparam UsecaseFontColor #25364F
+skinparam RectangleBorderColor #25364F
+skinparam RectangleBackgroundColor #FFFFFF
+skinparam RectangleFontColor #AF2A35
+skinparam RectangleFontStyle bold
+skinparam NoteBackgroundColor #FFFFFF
+skinparam NoteBorderColor #8A94A6
+skinparam NoteFontColor #25364F
+skinparam TitleFontColor #25364F
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+left to right direction
+title Почта: папки, фильтры, поиск и выгрузка
+
+actor "Менеджер" as Mgr
+
+rectangle "AI-помощник менеджера по заявкам" {
+  usecase "Просмотреть список писем" as UC0
+  usecase "Открыть ящик\nпо срочности" as UC1
+  usecase "Открыть папку\n«В работе»" as UC2
+  usecase "Открыть папку\n«Решённые»" as UC3
+  usecase "Отфильтровать\nпо сводке" as UC4
+  usecase "Переключить вкладку\nкатегории" as UC5
+  usecase "Найти письмо" as UC6
+  usecase "Выгрузить список\n(Excel, PDF, Word, JSON)" as UC7
+}
+
+Mgr --> UC0
+Mgr --> UC7
+UC1 .> UC0 : <<extend>>
+UC2 .> UC0 : <<extend>>
+UC3 .> UC0 : <<extend>>
+UC4 .> UC0 : <<extend>>
+UC5 .> UC0 : <<extend>>
+UC6 .> UC0 : <<extend>>
+
+note bottom of UC7
+  Выгружается текущий
+  отфильтрованный список
+end note
+@enduml

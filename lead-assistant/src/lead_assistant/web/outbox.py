@@ -16,6 +16,7 @@ import sqlite3
 import ssl
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from typing import Any
@@ -26,6 +27,8 @@ from lead_assistant.web.db import audit, lead_key, transaction, utc_now
 
 MAX_BODY = 5000
 TIMEOUT = 20.0
+SMTP_SSL_PORT = 465
+SMTP_STARTTLS_PORT = 587
 
 
 class OutboxError(Exception):
@@ -35,28 +38,33 @@ class OutboxError(Exception):
         self.message = message
 
 
+def _pick_config(
+    configs: list[dict[str, Any]], lead: Lead, address_of: Callable[[dict[str, Any]], str]
+) -> dict[str, Any] | None:
+    """Подключение, через которое пришло обращение, иначе первое из проверенных."""
+    inbox = str(lead.get("inbox") or "").strip().lower()
+    for config in configs:
+        if inbox and address_of(config) == inbox:
+            return config
+    return configs[0] if configs else None
+
+
 def _email_config(conn: sqlite3.Connection, lead: Lead) -> dict[str, Any] | None:
     """Ящик для ответа: тот, в который пришло письмо, иначе первый подключённый."""
-    boxes: list[dict[str, Any]] = []
-    for name in connectors.mailbox_names(conn):
-        row = conn.execute(
-            "SELECT config, state FROM connectors WHERE name = ?", (name,)
-        ).fetchone()
-        if row is not None and row["state"] == "ok":
-            boxes.append(json.loads(row["config"]))
-    inbox = str(lead.get("inbox") or "").strip().lower()
-    for config in boxes:
-        if inbox and str(config.get("user") or "").strip().lower() == inbox:
-            return config
-    return boxes[0] if boxes else None
+    return _pick_config(
+        connectors.ready_configs(conn, connectors.mailbox_names(conn)),
+        lead,
+        lambda config: str(config.get("user") or "").strip().lower(),
+    )
 
 
 def smtp_endpoint(config: dict[str, Any]) -> tuple[str, int]:
+    """SMTP-сервер ящика: из настроек или по IMAP-серверу (imap.mail.ru → smtp.mail.ru)."""
     host = str(config.get("smtp_host") or "").strip()
     if not host:
         imap_host = str(config.get("host") or "")
         host = "smtp." + imap_host[5:] if imap_host.startswith("imap.") else imap_host
-    port = int(config.get("smtp_port") or 465)
+    port = int(config.get("smtp_port") or SMTP_SSL_PORT)
     return host, port
 
 
@@ -79,58 +87,62 @@ def _original_message_id(lead: Lead) -> str | None:
 
 def _telegram_config(conn: sqlite3.Connection, lead: Lead) -> dict[str, Any] | None:
     """Бот для ответа: тот, через которого пришло сообщение, иначе первый подключённый."""
-    bots: list[dict[str, Any]] = []
-    for name in connectors.names_of(conn, "telegram"):
-        row = conn.execute(
-            "SELECT config, state FROM connectors WHERE name = ?", (name,)
-        ).fetchone()
-        if row is not None and row["state"] == "ok":
-            bots.append(json.loads(row["config"]))
-    inbox = str(lead.get("inbox") or "").strip().lower()
-    for config in bots:
-        if inbox and f"@{config.get('bot_username') or ''}".lower() == inbox:
-            return config
-    return bots[0] if bots else None
+    return _pick_config(
+        connectors.ready_configs(conn, connectors.names_of(conn, "telegram")),
+        lead,
+        lambda config: f"@{config.get('bot_username') or ''}".lower(),
+    )
 
 
 def reply_info(conn: sqlite3.Connection, lead: Lead) -> dict[str, Any]:
     """Можно ли ответить из приложения и куда: показывается в карточке до отправки."""
-    contact = str(lead.get("contact") or "").strip()
-    channel = lead.get("channel")
-    if channel == "telegram":
-        reason = None
-        if lead.get("category") == "spam":
-            reason = "На спам не отвечаем."
-        elif not lead.get("tg_chat_id"):
-            reason = "Сообщение пришло не через бота — ответьте клиенту в Telegram вручную."
-        elif _telegram_config(conn, lead) is None:
-            reason = "Telegram-бот не подключён: «Почта и сервисы» → «Telegram-бот»."
-        return {
-            "available": reason is None,
-            "reason": reason,
-            "channel": "telegram",
-            "to": contact or None,
-            "from": "Telegram-бот",
-            "subject": None,
-        }
+    if lead.get("channel") == "telegram":
+        return _telegram_reply_info(conn, lead)
+    return _email_reply_info(conn, lead)
+
+
+def _telegram_reply_info(conn: sqlite3.Connection, lead: Lead) -> dict[str, Any]:
     reason = None
-    if channel != "email":
+    if lead.get("category") == "spam":
+        reason = "На спам не отвечаем."
+    elif not lead.get("tg_chat_id"):
+        reason = "Сообщение пришло не через бота — ответьте клиенту в Telegram вручную."
+    elif _telegram_config(conn, lead) is None:
+        reason = "Telegram-бот не подключён: «Почта и сервисы» → «Telegram-бот»."
+    return {
+        "available": reason is None,
+        "reason": reason,
+        "channel": "telegram",
+        "to": _contact(lead) or None,
+        "from": "Telegram-бот",
+        "subject": None,
+    }
+
+
+def _email_reply_info(conn: sqlite3.Connection, lead: Lead) -> dict[str, Any]:
+    contact = _contact(lead)
+    config = _email_config(conn, lead)
+    reason = None
+    if lead.get("channel") != "email":
         reason = "Ответ из приложения отправляется по почте и в Telegram."
     elif "@" not in contact:
         reason = "У обращения нет адреса электронной почты."
     elif lead.get("category") == "spam":
         reason = "На спам не отвечаем."
-    elif _email_config(conn, lead) is None:
+    elif config is None:
         reason = "Почта не подключена: «Почта и сервисы» → «Почта» → «Проверить связь»."
-    config = _email_config(conn, lead) or {}
     return {
         "available": reason is None,
         "reason": reason,
         "channel": "email",
         "to": contact or None,
-        "from": config.get("user"),
+        "from": (config or {}).get("user"),
         "subject": _subject(lead),
     }
+
+
+def _contact(lead: Lead) -> str:
+    return str(lead.get("contact") or "").strip()
 
 
 def sent_replies(conn: sqlite3.Connection, key: str) -> list[dict[str, Any]]:
@@ -181,7 +193,7 @@ def explain_smtp_error(exc: BaseException, host: str, port: int) -> str:
 
 def _deliver(config: dict[str, Any], message: EmailMessage) -> None:
     host, port = smtp_endpoint(config)
-    if port == 465:
+    if port == SMTP_SSL_PORT:
         with smtplib.SMTP_SSL(
             host, port, timeout=TIMEOUT, context=ssl.create_default_context()
         ) as client:
@@ -189,7 +201,7 @@ def _deliver(config: dict[str, Any], message: EmailMessage) -> None:
             client.send_message(message)
         return
     with smtplib.SMTP(host, port, timeout=TIMEOUT) as client:
-        if port == 587:
+        if port == SMTP_STARTTLS_PORT:
             client.starttls(context=ssl.create_default_context())
         if client.has_extn("auth"):
             client.login(config["user"], config["password"])
@@ -203,6 +215,7 @@ def send_reply(
     body: object,
     force: bool = False,
 ) -> dict[str, Any]:
+    """Отправляет ответ и записывает попытку; при сбое — OutboxError с понятной причиной."""
     text = str(body or "").strip()
     if not text:
         raise OutboxError("INVALID_ARGUMENT", "Текст ответа пустой")
@@ -222,33 +235,10 @@ def send_reply(
             "ALREADY_SENT", f"Ответ этому клиенту уже отправлен {already['created_at']}"
         )
     if info["channel"] == "telegram":
-        message_id = None
-        status, error = "sent", None
-        try:
-            message_id = _deliver_telegram(
-                _telegram_config(conn, lead) or {}, int(lead["tg_chat_id"]), text
-            )
-        except (OSError, ValueError) as exc:
-            status, error = "failed", explain_telegram_error(exc)
+        message_id, error = _send_telegram(conn, lead, text)
     else:
-        config = _email_config(conn, lead) or {}
-        message = EmailMessage()
-        message["From"] = str(config["user"])
-        message["To"] = str(info["to"])
-        message["Subject"] = str(info["subject"])
-        message["Date"] = formatdate(localtime=True)
-        message["Message-ID"] = make_msgid(domain=str(config["user"]).split("@")[-1])
-        original = _original_message_id(lead)
-        if original:
-            message["In-Reply-To"] = original
-            message["References"] = original
-        message.set_content(text)
-        message_id = message["Message-ID"]
-        status, error = "sent", None
-        try:
-            _deliver(config, message)
-        except (OSError, smtplib.SMTPException) as exc:
-            status, error = "failed", explain_smtp_error(exc, *smtp_endpoint(config))
+        message_id, error = _send_email(conn, lead, info, text)
+    status = "failed" if error else "sent"
     with transaction(conn):
         conn.execute(
             "INSERT INTO outgoing(lead_key, channel, recipient, subject, body, status, error, "
@@ -270,6 +260,52 @@ def send_reply(
     if error:
         raise OutboxError("SEND_FAILED", error)
     return {"to": info["to"], "subject": info["subject"], "status": status}
+
+
+# Отправка возвращает (номер сообщения, причина сбоя): сбой не исключение, потому что
+# неудачная попытка тоже записывается в журнал исходящих.
+
+
+def _send_telegram(
+    conn: sqlite3.Connection, lead: Lead, text: str
+) -> tuple[str | None, str | None]:
+    try:
+        message_id = _deliver_telegram(
+            _telegram_config(conn, lead) or {}, int(lead["tg_chat_id"]), text
+        )
+    except (OSError, ValueError) as exc:
+        return None, explain_telegram_error(exc)
+    return message_id, None
+
+
+def _send_email(
+    conn: sqlite3.Connection, lead: Lead, info: dict[str, Any], text: str
+) -> tuple[str | None, str | None]:
+    config = _email_config(conn, lead) or {}
+    message = _reply_message(config, lead, info, text)
+    try:
+        _deliver(config, message)
+    except (OSError, smtplib.SMTPException) as exc:
+        return message["Message-ID"], explain_smtp_error(exc, *smtp_endpoint(config))
+    return message["Message-ID"], None
+
+
+def _reply_message(
+    config: dict[str, Any], lead: Lead, info: dict[str, Any], text: str
+) -> EmailMessage:
+    """Письмо-ответ в той же переписке: In-Reply-To и References на исходное письмо."""
+    message = EmailMessage()
+    message["From"] = str(config["user"])
+    message["To"] = str(info["to"])
+    message["Subject"] = str(info["subject"])
+    message["Date"] = formatdate(localtime=True)
+    message["Message-ID"] = make_msgid(domain=str(config["user"]).split("@")[-1])
+    original = _original_message_id(lead)
+    if original:
+        message["In-Reply-To"] = original
+        message["References"] = original
+    message.set_content(text)
+    return message
 
 
 def _deliver_telegram(config: dict[str, Any], chat_id: int, text: str) -> str:

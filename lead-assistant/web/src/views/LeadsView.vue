@@ -5,7 +5,7 @@ import { api, ApiError, CATEGORY, PRIORITY, type Job, type LeadSummary } from '.
 import Icon, { type IconName } from '../components/Icon.vue'
 import LeadCard from '../components/LeadCard.vue'
 import UiSelect from '../components/UiSelect.vue'
-import { applyFolder, EMPTY_FILTERS, filters, loadMail, mail, queryString, type FilterKey } from '../mailbox'
+import { applyFolder, EMPTY_FILTERS, filters, importantFirst, loadMail, mail, queryString, sortImportant, type FilterKey } from '../mailbox'
 
 const route = useRoute()
 const router = useRouter()
@@ -27,6 +27,7 @@ watch(filters, () => {
 })
 
 const data = computed(() => mail.data)
+const rows = computed(() => (data.value ? (importantFirst.value ? sortImportant(data.value.leads) : data.value.leads) : []))
 const counts = computed(() => data.value?.counts ?? {})
 const f = (key: string) => data.value?.folders[key] ?? 0
 const job = computed<Job | null>(() => data.value?.active_job ?? null)
@@ -254,6 +255,16 @@ const STATE_OPTIONS = [
       <div class="toolbar">
         <UiSelect v-model="filters.priority" class="flt" :options="PRIORITY_OPTIONS" aria-label="Срочность" />
         <UiSelect v-model="filters.state" class="flt" :options="STATE_OPTIONS" aria-label="Состояние" />
+        <button
+          type="button"
+          class="sort-btn"
+          :class="{ on: importantFirst }"
+          :aria-pressed="importantFirst"
+          title="Неразобранные и ждущие решения — по срочности: высокая, просроченные, ближайший срок ответа"
+          @click="importantFirst = !importantFirst"
+        >
+          <Icon name="flame" /> Сначала важные
+        </button>
         <span class="grow"></span>
         <span v-if="data" class="small muted count-label">Показано: <b class="num">{{ data.leads.length }}</b></span>
         <button v-if="filtered" class="ghost" @click="reset"><Icon name="close" /> Сбросить</button>
@@ -282,7 +293,7 @@ const STATE_OPTIONS = [
         </thead>
         <tbody>
           <tr
-            v-for="lead in data.leads"
+            v-for="lead in rows"
             :key="lead.key"
             tabindex="0"
             :class="{ urgent: lead.priority === 'high' && isOpen(lead), done: !isOpen(lead) }"
@@ -377,6 +388,8 @@ const STATE_OPTIONS = [
 }
 .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid var(--line); }
 .toolbar .flt { width: 12.5rem; }
+.sort-btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 620; }
+.sort-btn.on :deep(.icon) { color: var(--brand-red); }
 
 .list th { background: var(--surface-2); padding: 0.6rem 1rem; white-space: nowrap; }
 .list td { padding: 0.8rem 1rem; vertical-align: middle; }

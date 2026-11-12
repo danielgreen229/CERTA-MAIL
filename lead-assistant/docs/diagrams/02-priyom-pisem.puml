@@ -1,0 +1,60 @@
+@startuml
+skinparam defaultFontName "DejaVu Sans"
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontColor #25364F
+skinparam ArrowColor #25364F
+skinparam ArrowFontColor #25364F
+skinparam ArrowFontSize 11
+skinparam ActorBorderColor #25364F
+skinparam ActorBackgroundColor #FFFFFF
+skinparam ActorFontColor #25364F
+skinparam UsecaseBorderColor #25364F
+skinparam UsecaseBackgroundColor #F3F5F8
+skinparam UsecaseFontColor #25364F
+skinparam RectangleBorderColor #25364F
+skinparam RectangleBackgroundColor #FFFFFF
+skinparam RectangleFontColor #AF2A35
+skinparam RectangleFontStyle bold
+skinparam NoteBackgroundColor #FFFFFF
+skinparam NoteBorderColor #8A94A6
+skinparam NoteFontColor #25364F
+skinparam TitleFontColor #25364F
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+left to right direction
+title Приём писем из почтовых ящиков и Telegram-ботов
+
+actor "Клиент" as Client
+actor "Фоновый обработчик" as Worker
+
+rectangle "AI-помощник менеджера по заявкам" {
+  usecase "Проверить источники\nраз в минуту" as UC1
+  usecase "Забрать новые письма\nиз почтового ящика" as UC2
+  usecase "Забрать сообщения\nTelegram-бота" as UC3
+  usecase "Привести письмо\nк единому виду" as UC4
+  usecase "Отсеять дубли" as UC5
+  usecase "Импортировать\nновую заявку" as UC6
+  usecase "Отметить ошибку\nподключения" as UC7
+}
+
+actor "Почтовый сервер\n(IMAP)" as Imap
+actor "Telegram" as Tg
+
+Client -- UC6 : заявка письмом\nили в Telegram
+Worker --> UC1
+UC1 .> UC2 : <<include>>
+UC1 .> UC3 : <<include>>
+UC2 --> Imap
+UC3 --> Tg
+UC2 .> UC6 : <<include>>
+UC3 .> UC6 : <<include>>
+UC6 .> UC4 : <<include>>
+UC6 .> UC5 : <<include>>
+UC7 .> UC1 : <<extend>>
+
+note bottom of UC5
+  Повторно полученное письмо
+  не создаёт вторую заявку
+end note
+@enduml

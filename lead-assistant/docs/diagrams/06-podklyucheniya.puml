@@ -1,0 +1,57 @@
+@startuml
+skinparam defaultFontName "DejaVu Sans"
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontColor #25364F
+skinparam ArrowColor #25364F
+skinparam ArrowFontColor #25364F
+skinparam ArrowFontSize 11
+skinparam ActorBorderColor #25364F
+skinparam ActorBackgroundColor #FFFFFF
+skinparam ActorFontColor #25364F
+skinparam UsecaseBorderColor #25364F
+skinparam UsecaseBackgroundColor #F3F5F8
+skinparam UsecaseFontColor #25364F
+skinparam RectangleBorderColor #25364F
+skinparam RectangleBackgroundColor #FFFFFF
+skinparam RectangleFontColor #AF2A35
+skinparam RectangleFontStyle bold
+skinparam NoteBackgroundColor #FFFFFF
+skinparam NoteBorderColor #8A94A6
+skinparam NoteFontColor #25364F
+skinparam TitleFontColor #25364F
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+left to right direction
+title Подключения: почтовые ящики, Telegram-боты и сервисы
+
+actor "Сотрудник" as Emp
+actor "Администратор" as Adm
+Emp <|-- Adm
+
+rectangle "AI-помощник менеджера по заявкам" {
+  usecase "Добавить почтовый ящик" as UC1
+  usecase "Добавить Telegram-бота" as UC2
+  usecase "Проверить связь" as UC3
+  usecase "Забрать письма сейчас" as UC4
+  usecase "Удалить подключение" as UC5
+  usecase "Просмотреть свои\nподключения" as UC6
+  usecase "Просмотреть подключения\nвсех сотрудников" as UC7
+  usecase "Настроить сервисы компании\n(CRM, TMS, тарифы)" as UC8
+}
+
+Emp --> UC6
+Emp --> UC1
+Emp --> UC2
+Emp --> UC3
+Emp --> UC4
+Emp --> UC5
+Adm --> UC7
+Adm --> UC8
+UC8 .> UC3 : <<include>>
+
+note bottom of UC5
+  Сотрудник управляет только
+  своими подключениями
+end note
+@enduml

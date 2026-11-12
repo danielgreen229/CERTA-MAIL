@@ -1,0 +1,58 @@
+@startuml
+skinparam defaultFontName "DejaVu Sans"
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontColor #25364F
+skinparam ArrowColor #25364F
+skinparam ArrowFontColor #25364F
+skinparam ArrowFontSize 11
+skinparam ActorBorderColor #25364F
+skinparam ActorBackgroundColor #FFFFFF
+skinparam ActorFontColor #25364F
+skinparam UsecaseBorderColor #25364F
+skinparam UsecaseBackgroundColor #F3F5F8
+skinparam UsecaseFontColor #25364F
+skinparam RectangleBorderColor #25364F
+skinparam RectangleBackgroundColor #FFFFFF
+skinparam RectangleFontColor #AF2A35
+skinparam RectangleFontStyle bold
+skinparam NoteBackgroundColor #FFFFFF
+skinparam NoteBorderColor #8A94A6
+skinparam NoteFontColor #25364F
+skinparam TitleFontColor #25364F
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+left to right direction
+title База знаний
+
+actor "Менеджер" as Mgr
+actor "Руководитель" as Sup
+Mgr <|-- Sup
+
+rectangle "AI-помощник менеджера по заявкам" {
+  usecase "Загрузить документ" as UC1
+  usecase "Указать минимальную роль\nи срок действия" as UC2
+  usecase "Разбить на фрагменты\nи проиндексировать" as UC3
+  usecase "Удалить документ" as UC8
+  usecase "Искать по базе знаний" as UC4
+  usecase "Увидеть фрагменты\nисточников в окне письма" as UC5
+  usecase "Открыть фрагмент\nисточника" as UC6
+  usecase "Учесть права по роли\nи срок действия" as UC7
+}
+
+Sup --> UC1
+Sup --> UC8
+Mgr --> UC4
+Mgr --> UC5
+UC1 .> UC2 : <<include>>
+UC1 .> UC3 : <<include>>
+UC4 .> UC7 : <<include>>
+UC5 .> UC7 : <<include>>
+UC6 .> UC5 : <<extend>>
+
+note bottom of UC7
+  Документы с истёкшим сроком
+  или выше роли сотрудника
+  не показываются
+end note
+@enduml

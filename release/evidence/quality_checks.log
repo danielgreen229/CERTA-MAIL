@@ -1,0 +1,20 @@
+# Проверка качества, версия 2.1.0, 2026-11-12T14:07:09Z
+$ ruff check src tests
+All checks passed!
+$ ruff format --check src tests
+73 files already formatted
+$ mypy src
+Success: no issues found in 44 source files
+$ pytest -q tests
+........................................................................ [ 88%]
+.......s.....................                                            [100%]
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_storage.py:347: нужны права POSIX
+244 passed, 1 skipped in 103.75s (0:01:43)
+$ vue-tsc --noEmit && vite build
+dist/assets/golos-text-latin-ext-wght-normal-B-I5lbAQ.woff2      19.18 kB
+dist/assets/golos-text-cyrillic-wght-normal-mKek_fSS.woff2       22.03 kB
+dist/assets/golos-text-latin-wght-normal-BS5oQT7X.woff2          37.92 kB
+dist/assets/index-Bsh0PKt4.css                                   38.17 kB │ gzip:  8.22 kB
+dist/assets/index-oL8OPz2j.js                                   214.18 kB │ gzip: 79.82 kB
+✓ built in 949ms

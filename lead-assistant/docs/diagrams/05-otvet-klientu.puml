@@ -1,0 +1,57 @@
+@startuml
+skinparam defaultFontName "DejaVu Sans"
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontColor #25364F
+skinparam ArrowColor #25364F
+skinparam ArrowFontColor #25364F
+skinparam ArrowFontSize 11
+skinparam ActorBorderColor #25364F
+skinparam ActorBackgroundColor #FFFFFF
+skinparam ActorFontColor #25364F
+skinparam UsecaseBorderColor #25364F
+skinparam UsecaseBackgroundColor #F3F5F8
+skinparam UsecaseFontColor #25364F
+skinparam RectangleBorderColor #25364F
+skinparam RectangleBackgroundColor #FFFFFF
+skinparam RectangleFontColor #AF2A35
+skinparam RectangleFontStyle bold
+skinparam NoteBackgroundColor #FFFFFF
+skinparam NoteBorderColor #8A94A6
+skinparam NoteFontColor #25364F
+skinparam TitleFontColor #25364F
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+left to right direction
+title Ответ клиенту по почте или в Telegram
+
+actor "Менеджер" as Mgr
+
+rectangle "AI-помощник менеджера по заявкам" {
+  usecase "Отправить ответ\nклиенту" as UC1
+  usecase "Отправить письмо\nс того же ящика" as UC2
+  usecase "Отправить сообщение\nчерез бота" as UC3
+  usecase "Защитить от повторной\nотправки" as UC4
+  usecase "Записать попытку\nв журнал" as UC5
+  usecase "Показать понятную\nпричину неудачи" as UC6
+  usecase "Просмотреть отправленные\nответы" as UC7
+}
+
+actor "Почтовый сервер\n(SMTP)" as Smtp
+actor "Telegram" as Tg
+
+Mgr --> UC1
+Mgr --> UC7
+UC2 .> UC1 : <<extend>>
+UC3 .> UC1 : <<extend>>
+UC1 .> UC4 : <<include>>
+UC1 .> UC5 : <<include>>
+UC6 .> UC5 : <<extend>>
+UC2 --> Smtp
+UC3 --> Tg
+
+note bottom of UC4
+  Ответ на одно письмо
+  уходит клиенту один раз
+end note
+@enduml

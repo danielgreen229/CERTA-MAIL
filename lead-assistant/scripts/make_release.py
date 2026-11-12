@@ -18,6 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TOP_LEVEL = "lead-assistant"
+REPOSITORY = "https://github.com/danielgreen229/CERTA-MAIL"
 
 INCLUDE_FILES = (
     "README.md",
@@ -37,6 +38,7 @@ INCLUDE_FILES = (
     "docker-compose.yml",
     "docker-compose.gpu.yml",
     ".dockerignore",
+    ".env.example",
     "requirements.README",
     "web/package.json",
     "web/package-lock.json",
@@ -45,7 +47,7 @@ INCLUDE_FILES = (
     "web/vite.config.ts",
 )
 # web/dist — готовая сборка интерфейса: архив запускается без Node.js.
-INCLUDE_DIRS = ("src", "tests", "scripts", "evals", "docs", "web/src", "web/dist")
+INCLUDE_DIRS = ("src", "tests", "scripts", "evals", "docs", "web/src", "web/public", "web/dist")
 TEXT_SUFFIXES = {
     ".py",
     ".md",
@@ -87,6 +89,23 @@ def collect() -> list[Path]:
     return sorted(set(files))
 
 
+def _project_readme() -> bytes:
+    """Полный README репозитория со ссылками, пересчитанными от корня архива.
+
+    В репозитории `lead-assistant/README.md` — короткая отсылка к README уровнем выше,
+    которого в архиве нет. Поэтому в архив кладётся полный текст: пути внутри проекта
+    становятся относительными, а `release/` (комплект сдачи) ведёт в репозиторий.
+    """
+    full = ROOT.parent / "README.md"
+    if not full.is_file():
+        return (ROOT / "README.md").read_bytes()
+    text = full.read_text("utf-8")
+    text = text.replace("](lead-assistant/)", "](./)").replace("](lead-assistant/", "](")
+    text = text.replace('src="lead-assistant/', 'src="')
+    text = text.replace("](release/", f"]({REPOSITORY}/tree/main/release/")
+    return text.encode("utf-8")
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 1:
         print(__doc__)
@@ -101,7 +120,7 @@ def main(argv: list[str]) -> int:
         for path in files:
             relative = path.relative_to(ROOT).as_posix()
             # Текст хранится с LF независимо от системы, на которой собран архив.
-            data = path.read_bytes()
+            data = _project_readme() if relative == "README.md" else path.read_bytes()
             if path.suffix in TEXT_SUFFIXES or path.name in TEXT_SUFFIXES:
                 data = data.replace(b"\r\n", b"\n")
             info = tarfile.TarInfo(f"{TOP_LEVEL}/{relative}")

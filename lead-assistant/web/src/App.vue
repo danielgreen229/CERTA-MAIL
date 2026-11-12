@@ -5,6 +5,8 @@ import { api, ROLE } from './api'
 import BrandLogo from './components/BrandLogo.vue'
 import FolderNav from './components/FolderNav.vue'
 import Icon, { type IconName } from './components/Icon.vue'
+import OnboardingTour from './components/OnboardingTour.vue'
+import { maybeOffer } from './onboarding'
 import { applyFolder, filters, loadMail, mail, startPolling, stopPolling, type FolderFilter } from './mailbox'
 import { soundOn, toggleSound } from './notify'
 import { session, can } from './session'
@@ -36,6 +38,8 @@ watch(
     if (id && !session.user?.must_change_password) {
       loadMail(true)
       startPolling()
+      // Обучение предлагается, когда интерфейс уже на экране.
+      window.setTimeout(maybeOffer, 1200)
     } else stopPolling()
   },
   { immediate: true },
@@ -219,6 +223,7 @@ async function logout() {
       <RouterView />
     </main>
 
+    <OnboardingTour />
     <div v-if="mail.toast" class="toast" role="status" @click="mail.toast = ''">
       <Icon name="mail" /> {{ mail.toast }}
     </div>

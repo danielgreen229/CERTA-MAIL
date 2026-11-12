@@ -4,7 +4,7 @@
 приложение работает на локальном JSON. Импорт нормализует сообщение в формат заявки
 и защищён от повторов: внешний идентификатор хранится и в SQLite, и в самой заявке
 (поле ``source_id``), поэтому падение между двумя записями не приводит к дублю.
-Исходящих действий (отправки ответов клиентам) в этой версии нет.
+Ответы клиентам отправляет ``outbox`` — по явной команде менеджера.
 """
 
 from __future__ import annotations
@@ -32,6 +32,10 @@ from lead_assistant.web.db import audit, transaction, utc_now
 
 TIMEOUT = 10.0
 SECRET_KEYS = ("password", "token", "bot_token", "api_key")
+# Так секрет показывается в интерфейсе; эта же маска при сохранении означает «не менять».
+SECRET_MASK = "••••••"
+IMAPS_PORT = 993
+MAX_TEXT = 5000
 
 
 @dataclass(frozen=True)
@@ -135,6 +139,18 @@ def mailbox_names(conn: sqlite3.Connection) -> list[str]:
     return names_of(conn, "email")
 
 
+def ready_configs(conn: sqlite3.Connection, names: list[str]) -> list[dict[str, Any]]:
+    """Параметры проверенных подключений (state = ok) в порядке ``names``."""
+    configs: list[dict[str, Any]] = []
+    for name in names:
+        row = conn.execute(
+            "SELECT config, state FROM connectors WHERE name = ?", (name,)
+        ).fetchone()
+        if row is not None and row["state"] == "ok":
+            configs.append(json.loads(row["config"]))
+    return configs
+
+
 def owner_of(conn: sqlite3.Connection, name: str) -> int | None:
     row = conn.execute("SELECT owner_id FROM connectors WHERE name = ?", (name,)).fetchone()
     return int(row[0]) if row and row[0] is not None else None
@@ -163,10 +179,6 @@ def add_connector(conn: sqlite3.Connection, base: str, user_id: int) -> dict[str
     return _public(_load(conn, name), conn)
 
 
-def add_mailbox(conn: sqlite3.Connection, user_id: int) -> dict[str, Any]:
-    return add_connector(conn, "email", user_id)
-
-
 def remove_connector(conn: sqlite3.Connection, name: str, user_id: int) -> None:
     if not _EXTRA.fullmatch(name):
         raise ConnectorError(
@@ -177,9 +189,6 @@ def remove_connector(conn: sqlite3.Connection, name: str, user_id: int) -> None:
         if not deleted:
             raise ConnectorError("NOT_FOUND", f"Нет подключения {name}")
         audit(conn, "connector_removed", user_id, f"connector:{name}")
-
-
-remove_mailbox = remove_connector
 
 
 def _load(conn: sqlite3.Connection, name: str) -> dict[str, Any]:
@@ -252,7 +261,7 @@ def _public(record: dict[str, Any], conn: sqlite3.Connection | None = None) -> d
     bot = str(record["config"].get("bot_username") or "").strip()
     config = {
         key: (
-            "••••••"
+            SECRET_MASK
             if key in SECRET_KEYS and record["config"].get(key)
             else record["config"].get(key)
         )
@@ -310,14 +319,13 @@ def configure(
     for key in spec.fields:
         if key in values:
             value = values[key]
-            if key in SECRET_KEYS and value in ("••••••", None):
+            if key in SECRET_KEYS and value in (SECRET_MASK, None):
                 continue  # маска секрета не перезаписывает сохранённое значение
             config[key] = str(value).strip() if value is not None else ""
     if "test_service" in values:
         config["test_service"] = bool(values["test_service"])
-    if values.get("bot_token") not in (None, "", "••••••") and values.get("bot_token") != record[
-        "config"
-    ].get("bot_token"):
+    new_token = values.get("bot_token")
+    if new_token not in (None, "", SECRET_MASK) and new_token != record["config"].get("bot_token"):
         # Новый бот: начинаем с его первых сообщений.
         config.pop("last_update_id", None)
         config.pop("bot_username", None)
@@ -354,6 +362,10 @@ def _required(spec: Spec) -> tuple[str, ...]:
     return ("base_url",)
 
 
+def _save_config(conn: sqlite3.Connection, name: str, config: dict[str, Any]) -> None:
+    conn.execute("UPDATE connectors SET config = ? WHERE name = ?", (json.dumps(config), name))
+
+
 def _set_state(conn: sqlite3.Connection, name: str, state: str, detail: str) -> None:
     conn.execute(
         "UPDATE connectors SET state = ?, detail = ?, checked_at = ? WHERE name = ?",
@@ -382,27 +394,7 @@ def check(conn: sqlite3.Connection, name: str, user_id: int) -> dict[str, Any]:
     if not all(config.get(key) for key in _required(spec)):
         raise ConnectorError("NOT_CONFIGURED", "Сначала заполните параметры подключения")
     try:
-        if spec.kind == "imap":
-            client = _imap(config)
-            client.logout()
-            detail = f"вход выполнен, папка {config.get('folder') or 'INBOX'} доступна"
-        elif spec.kind == "telegram":
-            data = _http_json(telegram_url(config, "getMe"))
-            if not data or not data.get("ok"):
-                raise ConnectorError("CHECK_FAILED", "Telegram ответил без ok=true")
-            username = str(data["result"].get("username") or "")
-            detail = f"бот @{username} отвечает"
-            if username and config.get("bot_username") != username:
-                config["bot_username"] = username
-                conn.execute(
-                    "UPDATE connectors SET config = ? WHERE name = ?", (json.dumps(config), name)
-                )
-        else:
-            _http_json(
-                _join(config["base_url"], config.get("health_path") or "/health"),
-                config.get("api_key"),
-            )
-            detail = "сервис отвечает"
+        detail = _probe(conn, name, spec, config)
         state = "ok"
     except ConnectorError as error:
         state, detail = "error", error.message
@@ -413,6 +405,28 @@ def check(conn: sqlite3.Connection, name: str, user_id: int) -> dict[str, Any]:
     _set_state(conn, name, state, detail)
     audit(conn, "connector_checked", user_id, f"connector:{name}", state=state)
     return _public(_load(conn, name), conn)
+
+
+def _probe(conn: sqlite3.Connection, name: str, spec: Spec, config: dict[str, Any]) -> str:
+    """Одно обращение к внешней системе; возвращает пояснение для «Проверить связь»."""
+    if spec.kind == "imap":
+        _imap(config).logout()
+        return f"вход выполнен, папка {config.get('folder') or 'INBOX'} доступна"
+    if spec.kind == "telegram":
+        data = _http_json(telegram_url(config, "getMe"))
+        if not data or not data.get("ok"):
+            raise ConnectorError("CHECK_FAILED", "Telegram ответил без ok=true")
+        username = str(data["result"].get("username") or "")
+        # Имя бота нужно, чтобы отвечать клиенту тем же ботом, которому он написал.
+        if username and config.get("bot_username") != username:
+            config["bot_username"] = username
+            _save_config(conn, name, config)
+        return f"бот @{username} отвечает"
+    _http_json(
+        _join(config["base_url"], config.get("health_path") or "/health"),
+        config.get("api_key"),
+    )
+    return "сервис отвечает"
 
 
 def imap_folder(name: str) -> str:
@@ -446,10 +460,10 @@ def _is_utf7(name: str) -> bool:
 
 
 def _imap(config: dict[str, Any]) -> imaplib.IMAP4:
-    port = int(config.get("port") or 993)
+    port = int(config.get("port") or IMAPS_PORT)
     client: imaplib.IMAP4 = (
         imaplib.IMAP4_SSL(config["host"], port, timeout=TIMEOUT)
-        if port == 993
+        if port == IMAPS_PORT
         else imaplib.IMAP4(config["host"], port, timeout=TIMEOUT)
     )
     client.login(config["user"], config["password"])
@@ -531,7 +545,7 @@ def normalize_email(raw: bytes) -> dict[str, Any]:
             "channel": "email",
             "name": name or address,
             "contact": address,
-            "text": text[:5000],
+            "text": text[:MAX_TEXT],
             # Тема хранится отдельно: по ней строится «Re: …» в ответе клиенту.
             **({"subject": subject[:300]} if subject else {}),
         },
@@ -555,7 +569,7 @@ def normalize_telegram(update: dict[str, Any]) -> dict[str, Any] | None:
             "channel": "telegram",
             "name": name or contact,
             "contact": contact,
-            "text": str(text)[:5000],
+            "text": str(text)[:MAX_TEXT],
             # Чат, в который бот отвечает клиенту из окна письма.
             **({"tg_chat_id": int(chat)} if chat else {}),
         },
@@ -569,48 +583,58 @@ def import_messages(
     if record["state"] != "ok":
         raise ConnectorError("NOT_READY", "Подключение не проверено — сначала «Проверить»")
     config = record["config"]
-    items: list[dict[str, Any]] = []
     if is_mailbox(name):
-        client = _imap(config)
-        try:
-            _, data = client.search(None, "ALL")
-            for number in (data[0].split() if data and data[0] else [])[-limit:]:
-                _, fetched = client.fetch(number, "(BODY.PEEK[])")
-                for part in fetched:
-                    if isinstance(part, tuple):
-                        items.append(normalize_email(part[1]))
-        finally:
-            client.logout()
+        items = _fetch_emails(config, limit)
     elif is_telegram(name):
-        # Только сообщения после последнего полученного: иначе после 50 сообщений Telegram
-        # отдавал бы одни и те же старые, а новые не приходили бы.
-        # Отметка хранится у каждого бота и сбрасывается при смене токена.
-        last = config.get("last_update_id")
-        query: dict[str, Any] = {"limit": limit}
-        if last:
-            query["offset"] = int(last) + 1
-        data = _http_json(telegram_url(config, "getUpdates", query))
-        updates = (data or {}).get("result") or []
-        seen = [int(u["update_id"]) for u in updates if isinstance(u.get("update_id"), int)]
-        if seen:
-            config["last_update_id"] = max(seen)
-            conn.execute(
-                "UPDATE connectors SET config = ? WHERE name = ?", (json.dumps(config), name)
-            )
-            conn.commit()
-        for update in updates:
-            item = normalize_telegram(update)
-            if item:
-                items.append(item)
+        items = _fetch_telegram(conn, name, config, limit)
     else:
         raise ConnectorError("NOT_SUPPORTED", "Импорт заявок есть только для почты и Telegram")
-    # Ящик, в который пришло письмо: по нему в списке заявок строятся вкладки.
+    return _store_imported(conn, store, name, items, user_id, _inbox_label(name, config))
+
+
+def _fetch_emails(config: dict[str, Any], limit: int) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    client = _imap(config)
+    try:
+        _, data = client.search(None, "ALL")
+        for number in (data[0].split() if data and data[0] else [])[-limit:]:
+            _, fetched = client.fetch(number, "(BODY.PEEK[])")
+            for part in fetched:
+                if isinstance(part, tuple):
+                    items.append(normalize_email(part[1]))
+    finally:
+        client.logout()
+    return items
+
+
+def _fetch_telegram(
+    conn: sqlite3.Connection, name: str, config: dict[str, Any], limit: int
+) -> list[dict[str, Any]]:
+    # Только сообщения после последнего полученного: иначе после 50 сообщений Telegram
+    # отдавал бы одни и те же старые, а новые не приходили бы.
+    # Отметка хранится у каждого бота и сбрасывается при смене токена.
+    last = config.get("last_update_id")
+    query: dict[str, Any] = {"limit": limit}
+    if last:
+        query["offset"] = int(last) + 1
+    data = _http_json(telegram_url(config, "getUpdates", query))
+    updates = (data or {}).get("result") or []
+    seen = [int(u["update_id"]) for u in updates if isinstance(u.get("update_id"), int)]
+    if seen:
+        config["last_update_id"] = max(seen)
+        _save_config(conn, name, config)
+        conn.commit()
+    return [item for update in updates if (item := normalize_telegram(update))]
+
+
+def _inbox_label(name: str, config: dict[str, Any]) -> str | None:
+    """Ящик или бот, в который пришло сообщение: по нему в списке заявок строятся вкладки."""
     if is_mailbox(name):
         inbox = str(config.get("user") or "").strip().lower()
     else:
         bot = str(config.get("bot_username") or "").strip()
         inbox = f"@{bot}".lower() if bot else ""
-    return _store_imported(conn, store, name, items, user_id, inbox or None)
+    return inbox or None
 
 
 def _store_imported(

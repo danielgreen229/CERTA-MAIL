@@ -31,6 +31,7 @@ STATE_TITLES = {
     "corrected": "Исправлено и принято",
     "rejected": "Отклонено",
 }
+DECISION_STATES = {"accept": "accepted", "correct": "corrected", "reject": "rejected"}
 
 
 class DecisionError(Exception):
@@ -46,6 +47,10 @@ def content_hash(category: object, priority: object, draft: object) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _lead_hash(lead: Lead) -> str:
+    return content_hash(lead.get("category"), lead.get("priority"), lead.get("draft_reply"))
+
+
 def sync_results(
     conn: sqlite3.Connection,
     leads: list[Lead],
@@ -59,9 +64,7 @@ def sync_results(
             if lead.get("status") != STATUS_PROCESSED:
                 continue
             key = lead_key(lead["id"])
-            digest = content_hash(
-                lead.get("category"), lead.get("priority"), lead.get("draft_reply")
-            )
+            digest = _lead_hash(lead)
             existing = conn.execute(
                 "SELECT id, analysis FROM results WHERE lead_key = ? AND content_hash = ?",
                 (key, digest),
@@ -216,10 +219,10 @@ def build_view(conn: sqlite3.Connection, lead: Lead, settings: dict[str, Any]) -
     key = lead_key(lead["id"])
     result: dict[str, Any] | None = None
     if lead.get("status") == STATUS_PROCESSED:
-        digest = content_hash(lead.get("category"), lead.get("priority"), lead.get("draft_reply"))
         result = _result_row(
             conn.execute(
-                "SELECT * FROM results WHERE lead_key = ? AND content_hash = ?", (key, digest)
+                "SELECT * FROM results WHERE lead_key = ? AND content_hash = ?",
+                (key, _lead_hash(lead)),
             ).fetchone()
         )
     decision = None
@@ -247,25 +250,31 @@ def build_view(conn: sqlite3.Connection, lead: Lead, settings: dict[str, Any]) -
         if result is not None
         else []
     )
+    assignment = _assignment(conn, key, lead, settings)
+    return LeadView(lead, result, decision, extraction, reasons, assignment, _state(lead, decision))
+
+
+def _state(lead: Lead, decision: dict[str, Any] | None) -> str:
     if lead.get("status") != STATUS_PROCESSED:
-        state = "new"
-    elif decision is None:
-        state = "pending"
-    else:
-        state = {"accept": "accepted", "correct": "corrected", "reject": "rejected"}[
-            decision["action"]
-        ]
+        return "new"
+    if decision is None:
+        return "pending"
+    return DECISION_STATES[decision["action"]]
+
+
+def _assignment(
+    conn: sqlite3.Connection, key: str, lead: Lead, settings: dict[str, Any]
+) -> dict[str, Any]:
+    """Назначение вручную, если менеджер его задал, иначе — по настройкам и приоритету."""
     row = conn.execute("SELECT * FROM assignments WHERE lead_key = ?", (key,)).fetchone()
     if row is not None:
-        assignment = {"assignee": row["assignee"], "due_at": row["due_at"], "manual": True}
-    else:
-        due = due_at(_received(lead), lead.get("priority"), settings)
-        assignment = {
-            "assignee": default_assignee(lead.get("category"), settings),
-            "due_at": due.astimezone(UTC).isoformat() if due else None,
-            "manual": False,
-        }
-    return LeadView(lead, result, decision, extraction, reasons, assignment, state)
+        return {"assignee": row["assignee"], "due_at": row["due_at"], "manual": True}
+    due = due_at(_received(lead), lead.get("priority"), settings)
+    return {
+        "assignee": default_assignee(lead.get("category"), settings),
+        "due_at": due.astimezone(UTC).isoformat() if due else None,
+        "manual": False,
+    }
 
 
 def all_views(conn: sqlite3.Connection, store: LeadStore) -> list[LeadView]:
@@ -501,6 +510,6 @@ def assign(conn: sqlite3.Connection, key: str, user: User, assignee: object, due
             "VALUES (?, ?, ?, ?, ?) ON CONFLICT(lead_key) DO UPDATE SET "
             "assignee = excluded.assignee, "
             "due_at = excluded.due_at, set_by = excluded.set_by, updated_at = excluded.updated_at",
-            (key, (assignee or "").strip() or None, due_text, user.id, utc_now()),
+            (key, name or None, due_text, user.id, utc_now()),
         )
         audit(conn, "assigned", user.id, f"lead:{key}", assignee=assignee, due_at=due_text)

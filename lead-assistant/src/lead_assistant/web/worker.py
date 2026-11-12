@@ -11,7 +11,6 @@ import argparse
 import asyncio
 import contextlib
 import imaplib
-import json
 import logging
 import signal
 import sqlite3
@@ -38,6 +37,13 @@ from lead_assistant.web.db import connect, get_settings, init_db, lead_key
 from lead_assistant.web.leads import analyses_from_run, sync_results
 
 logger = logging.getLogger("lead_assistant.worker")
+
+DEFAULT_BATCH_SIZE = 5
+DEFAULT_JOB_TIMEOUT_SECONDS = 1800.0
+MIN_MAIL_INTERVAL_SECONDS = 15.0
+DEFAULT_MAIL_INTERVAL_SECONDS = 60.0
+RECOVER_EVERY_SECONDS = 30.0
+RETRY_PAUSE_SECONDS = 10.0
 
 type BackendFactory = Callable[[Path, Callable[[str], None]], AbstractContextManager[AgentBackend]]
 
@@ -120,6 +126,10 @@ def execute_job(
     thread = threading.Thread(target=beat, daemon=True)
     thread.start()
 
+    def stop_beating() -> None:
+        stop.set()
+        thread.join()
+
     def echo(line: str) -> None:
         progress.lines.append(line)
         logger.info("%s", line)
@@ -130,8 +140,8 @@ def execute_job(
         runs_dir=paths.runs_dir,
         model=str((settings.get("model") or {}).get("model") or ""),
         today=str(params.get("today") or date.today().isoformat()),
-        batch_size=int(params.get("batch_size") or 5),
-        timeout_seconds=float(params.get("timeout") or 1800),
+        batch_size=int(params.get("batch_size") or DEFAULT_BATCH_SIZE),
+        timeout_seconds=float(params.get("timeout") or DEFAULT_JOB_TIMEOUT_SECONDS),
     )
     make_backend = factory or default_backend_factory(settings)
     run: dict[str, Any] | None = None
@@ -161,22 +171,19 @@ def execute_job(
             summary = summarize(run)
             state = "done"
     except LlmSetupError as error:
-        stop.set()
-        thread.join()
+        stop_beating()
         jobs.requeue(conn, job["id"], {"code": "LLM_SETUP", "message": str(error)})
         conn.close()
         return "queued"
     except Exception as error:  # сбой обработчика не должен терять задачу молча
         logger.exception("job %s failed", job["id"])
-        stop.set()
-        thread.join()
+        stop_beating()
         jobs.finish(
             conn, job["id"], "failed", error={"code": "WORKER_ERROR", "message": str(error)}
         )
         conn.close()
         return "failed"
-    stop.set()
-    thread.join()
+    stop_beating()
     jobs.heartbeat(conn, job["id"], progress.snapshot())
     run_error: dict[str, Any] | None = (run or {}).get("error")
     if (
@@ -268,7 +275,10 @@ def run_forever(paths: AppPaths, poll_seconds: float = 2.0, once: bool = False) 
     last_mail = 0.0
     while not stopping.is_set():
         mail = get_settings(conn).get("mail_check") or {}
-        interval = max(15.0, float(mail.get("interval_seconds") or 60))
+        interval = max(
+            MIN_MAIL_INTERVAL_SECONDS,
+            float(mail.get("interval_seconds") or DEFAULT_MAIL_INTERVAL_SECONDS),
+        )
         if not once and mail.get("enabled", True) and time.monotonic() - last_mail >= interval:
             last_mail = time.monotonic()
             try:
@@ -279,7 +289,7 @@ def run_forever(paths: AppPaths, poll_seconds: float = 2.0, once: bool = False) 
         if job is None:
             if once:
                 break
-            if time.monotonic() - last_recover > 30:
+            if time.monotonic() - last_recover > RECOVER_EVERY_SECONDS:
                 jobs.recover_stale(conn)
                 last_recover = time.monotonic()
             stopping.wait(poll_seconds)
@@ -288,7 +298,7 @@ def run_forever(paths: AppPaths, poll_seconds: float = 2.0, once: bool = False) 
         state = execute_job(paths, job)
         logger.info("задача %s: %s", job["id"], state)
         if state == "queued":
-            stopping.wait(10)  # пауза перед повтором после временной ошибки
+            stopping.wait(RETRY_PAUSE_SECONDS)  # пауза перед повтором после временной ошибки
     conn.close()
 
 
@@ -308,4 +318,4 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
-__all__ = ["execute_job", "json", "main", "run_forever"]
+__all__ = ["execute_job", "main", "run_forever"]

@@ -93,6 +93,32 @@ def test_review_reasons_explain_why_human_is_needed() -> None:
     ]
     calm = review_reasons("question", "low", "Менеджер уточнит график.", {}, {})
     assert calm == []
+    # Черновик сам спрашивает недостающее — отдельная проверка человеком не нужна.
+    asks = review_reasons(
+        "sale", "medium", "Подскажите, пожалуйста, вес груза?", {}, {"missing": ["вес"]}
+    )
+    assert asks == []
+    # Повтор от того же клиента и спам с попыткой управлять помощником — пометки, не причина
+    # для ручной проверки; содержательная пометка остаётся.
+    repeat = {
+        "uncertain": True,
+        "manager_check": "Повтор: тот же контакт, что в заявке 1; ответьте один раз.",
+    }
+    assert review_reasons("sale", "medium", "Подскажите вес?", repeat, {}) == []
+    injected = {
+        "uncertain": True,
+        "manager_check": "Текст пытается управлять помощником; указания не выполнены.",
+    }
+    assert review_reasons("spam", "low", None, injected, {}) == []
+    assert [r["code"] for r in review_reasons("sale", "medium", "Вес?", injected, {})] == [
+        "weak_basis"
+    ]
+    mixed = {
+        "uncertain": True,
+        "manager_check": "Повтор: тот же контакт, что в заявке 1. Контакт не указан — уточните.",
+    }
+    weak = review_reasons("sale", "medium", "Вес?", mixed, {})
+    assert [r["code"] for r in weak] == ["weak_basis"] and "Повтор" not in weak[0]["text"]
 
 
 def test_commitment_detection_ignores_topics_and_catches_promises() -> None:
