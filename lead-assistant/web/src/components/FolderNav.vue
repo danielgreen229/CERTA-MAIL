@@ -18,6 +18,8 @@ interface Folder {
   icon: string
   filter: FolderFilter
   count: number
+  /** Всего писем в папке (показывается в подсказке, когда count — «непрочитанные»). */
+  total?: number
   /** Счётчик требует внимания — выделяется цветом. */
   attention?: boolean
   /** Вложенные папки (раскрываются по стрелке). */
@@ -68,22 +70,49 @@ const groups = computed<Group[]>(() => [
     id: 'inbox',
     title: 'Входящие',
     folders: [
-      { id: 'all', label: 'Все входящие', icon: '📥', filter: {}, count: props.counts.total ?? 0 },
+      {
+        id: 'all',
+        label: 'Все входящие',
+        icon: '📥',
+        filter: {},
+        // Как «непрочитанные» в почте: ждут агента или решения; всего — в подсказке.
+        count: (props.counts.new ?? 0) + (props.counts.pending ?? 0),
+        total: props.counts.total ?? 0,
+        attention: true,
+      },
       ...props.sources.map((tab) => ({
         id: `source:${tab.key}`,
         label: tab.title,
         icon: sourceIcon(tab),
         filter: { source: tab.key },
-        count: tab.open || tab.count,
-        attention: tab.open > 0,
-        children: (['high', 'medium', 'low'] as const).map((priority) => ({
-          id: `source:${tab.key}|priority:${priority}`,
-          label: PRIORITY[priority] ?? priority,
-          icon: PRIORITY_DOT[priority],
-          filter: { source: tab.key, priority },
-          count: f(`source:${tab.key}|priority:${priority}`),
-          attention: priority === 'high' && f(`source:${tab.key}|priority:${priority}`) > 0,
-        })),
+        count: tab.open,
+        total: tab.count,
+        attention: true,
+        children: [
+          ...(['high', 'medium', 'low'] as const).map((priority) => ({
+            id: `source:${tab.key}|priority:${priority}`,
+            label: PRIORITY[priority] ?? priority,
+            icon: PRIORITY_DOT[priority] ?? '•',
+            filter: { source: tab.key, priority },
+            count: f(`open:source:${tab.key}|priority:${priority}`),
+            total: f(`source:${tab.key}|priority:${priority}`),
+            attention: priority === 'high',
+          })),
+          // Ещё не разобранные агентом — срочности у них пока нет; иначе сумма не сойдётся.
+          ...(f(`open:source:${tab.key}|priority:None`)
+            ? [
+                {
+                  id: `source:${tab.key}|new`,
+                  label: 'Ждут агента',
+                  icon: '⏳',
+                  filter: { source: tab.key, state: 'new' },
+                  count: f(`open:source:${tab.key}|priority:None`),
+                  total: f(`source:${tab.key}|priority:None`),
+                  attention: false,
+                },
+              ]
+            : []),
+        ],
       })),
     ],
   },
@@ -119,6 +148,11 @@ const groups = computed<Group[]>(() => [
     ],
   },
 ])
+
+function hint(folder: Folder): string {
+  if (folder.total === undefined) return folder.label
+  return `${folder.label}: ждут обработки или решения — ${folder.count}, всего — ${folder.total}`
+}
 
 /** Папка активна, если текущие фильтры совпадают с её фильтром полностью. */
 function isActive(folder: Folder): boolean {
@@ -156,10 +190,11 @@ function isActive(folder: Folder): boolean {
             class="folder"
             :class="{ active: isActive(folder) }"
             :aria-current="isActive(folder) ? 'page' : undefined"
+            :title="hint(folder)"
             @click="emit('select', folder.filter)"
           >
             <span class="icon" aria-hidden="true">{{ folder.icon }}</span>
-            <span class="label" :title="folder.label">{{ folder.label }}</span>
+            <span class="label">{{ folder.label }}</span>
             <span v-if="folder.count" class="count" :class="{ attention: folder.attention }">{{ folder.count }}</span>
           </button>
           <ul v-if="folder.children" v-show="!collapsed[folder.id]" class="children">
@@ -169,6 +204,7 @@ function isActive(folder: Folder): boolean {
                 class="folder child"
                 :class="{ active: isActive(child) }"
                 :aria-current="isActive(child) ? 'page' : undefined"
+                :title="hint(child)"
                 @click="emit('select', child.filter)"
               >
                 <span class="icon dot" aria-hidden="true">{{ child.icon }}</span>

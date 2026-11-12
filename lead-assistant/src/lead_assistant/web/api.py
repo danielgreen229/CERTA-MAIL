@@ -177,6 +177,12 @@ def create_app(paths: AppPaths) -> Starlette:
                     f"state:{view.state}",
                     f"category:{view.lead.get('category')}",
                     f"source:{source}|priority:{view.lead.get('priority')}",
+                    # «Непрочитанные»: ждут агента или решения менеджера.
+                    *(
+                        [f"open:source:{source}|priority:{view.lead.get('priority')}"]
+                        if view.state in ("new", "pending")
+                        else []
+                    ),
                 ):
                     folders[key] = folders.get(key, 0) + 1
             active = jobs.active_job(conn)
