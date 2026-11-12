@@ -134,6 +134,16 @@ const actionTitle: Record<string, string> = { accept: 'Принято', correct:
 const replyText = ref('')
 const sending = ref(false)
 const alreadySent = computed(() => (lead.value?.replies ?? []).some((r) => r.status === 'sent'))
+// Показываем три последние попытки; более ранние неудачные — одной строкой.
+const recentReplies = computed(() => (lead.value?.replies ?? []).slice(-3))
+const hiddenAttempts = computed(() => Math.max(0, (lead.value?.replies.length ?? 0) - 3))
+/** Причина сбоя одной фразой; полный текст — во всплывающей подсказке. */
+function shortError(error: string): string {
+  if (/EOF|Disconnected|reset|обрывается/i.test(error)) return 'Соединение с почтовым сервером обрывается — отправку блокирует VPN или провайдер.'
+  if (/Authentication|535|логин или пароль/i.test(error)) return 'Почтовый сервер не принял пароль приложения.'
+  if (/timed out|refused|недоступен/i.test(error)) return 'Почтовый сервер недоступен.'
+  return error.split(' (')[0] ?? error
+}
 watch(
   () => [props.leadKey, current.value?.draft_reply] as const,
   () => {
@@ -353,10 +363,14 @@ const heading = computed(() => {
             </template>
             <div v-else class="small muted">{{ lead.reply.reason }}</div>
             <ul v-if="lead.replies.length" class="sent small">
-              <li v-for="r in lead.replies" :key="r.id" :class="r.status">
-                <b>{{ r.status === 'sent' ? '✓ Отправлено' : '✕ Не отправлено' }}</b>
-                {{ formatDate(r.at) }} · {{ r.user }} → {{ r.to }}
-                <div v-if="r.error" class="err">{{ r.error }}</div>
+              <li v-if="hiddenAttempts" class="muted">Ещё неудачных попыток раньше: {{ hiddenAttempts }}</li>
+              <li v-for="r in recentReplies" :key="r.id" :class="r.status">
+                <Icon :name="r.status === 'sent' ? 'check' : 'close'" size="1rem" />
+                <span>
+                  <b>{{ r.status === 'sent' ? 'Отправлено' : 'Не отправлено' }}</b>
+                  {{ formatDate(r.at) }}, {{ r.user }} → {{ r.to }}
+                  <span v-if="r.error" class="err" :title="r.error">{{ shortError(r.error) }}</span>
+                </span>
               </li>
             </ul>
           </section>
@@ -417,6 +431,12 @@ h3 :deep(.icon) { color: var(--muted); }
 .reply { margin-top: 14px; padding-top: 4px; border-top: 1px solid var(--line); }
 .reply-text { width: 100%; margin-top: 6px; resize: vertical; min-height: 120px; }
 .sent { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 4px; }
+.sent li { display: flex; gap: 0.4rem; align-items: flex-start; }
+.sent li.sent { color: var(--ok); }
+.sent li.sent span { color: var(--text); }
+.sent li.failed { color: var(--danger); }
+.sent li.failed > span { color: var(--text); }
+.sent .err { display: block; }
 .sent li.sent b { color: var(--ok); }
 .sent li.failed b, .sent .err { color: var(--danger); }
 .source, .draft { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
