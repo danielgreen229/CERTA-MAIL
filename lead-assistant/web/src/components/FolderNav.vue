@@ -132,7 +132,7 @@ function hint(folder: Folder): string {
               @click="emit('select', folder.filter)"
             >
               <Icon :name="folder.icon" size="1.1rem" />
-              <span class="label">{{ folder.label }}</span>
+              <span v-marquee class="label">{{ folder.label }}</span>
               <span v-if="folder.count" class="count num" :class="{ attention: folder.attention }">{{ folder.count }}</span>
             </button>
             <button
@@ -156,7 +156,7 @@ function hint(folder: Folder): string {
                 @click="emit('select', child.filter)"
               >
                 <span class="dot" :class="child.tone" aria-hidden="true"></span>
-                <span class="label">{{ child.label }}</span>
+                <span v-marquee class="label">{{ child.label }}</span>
                 <span v-if="child.count" class="count num" :class="{ attention: child.attention }">{{ child.count }}</span>
               </button>
             </li>

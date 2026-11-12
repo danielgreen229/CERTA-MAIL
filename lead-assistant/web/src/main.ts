@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
+import { vMarquee } from './marquee'
 import './style.css'
 import './theme'
 import { loadSession, session, can } from './session'
@@ -40,4 +41,4 @@ router.beforeEach(async (to) => {
   return true
 })
 
-createApp(App).use(router).mount('#app')
+createApp(App).use(router).directive('marquee', vMarquee).mount('#app')

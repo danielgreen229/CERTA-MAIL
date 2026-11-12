@@ -217,6 +217,16 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 0; font: inherit; }
 .page-head .lead { order: 3; flex: 0 0 100%; max-width: none; color: var(--muted); margin: 0.1rem 0 0; text-wrap: pretty; }
 .page-head .actions { margin-left: auto; display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
+/* Прокрутка длинного названия при наведении (см. marquee.ts). */
+.marquee-run {
+  text-overflow: clip !important;
+  animation: marquee var(--marquee-duration, 3s) ease-in-out 0.35s infinite alternate;
+}
+@keyframes marquee {
+  0%, 12% { text-indent: 0; }
+  88%, 100% { text-indent: var(--marquee-shift, 0); }
+}
+
 @media (max-width: 720px) {
   .page { padding: 1rem 0.85rem 2rem; }
   .hide-mobile { display: none !important; }

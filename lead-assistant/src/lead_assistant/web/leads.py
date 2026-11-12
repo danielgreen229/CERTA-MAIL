@@ -275,7 +275,8 @@ def all_views(conn: sqlite3.Connection, store: LeadStore) -> list[LeadView]:
     return [build_view(conn, lead, settings) for lead in leads]
 
 
-CHANNEL_TITLES = {"email": "Почта", "telegram": "Telegram"}
+# Заявки без ящика или бота — из исходного JSON-файла: подписаны, чтобы не путать с живыми.
+CHANNEL_TITLES = {"email": "Почта (JSON)", "telegram": "Telegram (JSON)"}
 
 
 def source_of(lead: Lead) -> str:

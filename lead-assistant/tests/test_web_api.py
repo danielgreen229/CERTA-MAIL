@@ -287,7 +287,7 @@ def test_source_tabs_split_leads_by_mailbox_and_channel(tmp_path: Path) -> None:
         assert data["sources"][0]["key"] == "sales@mail.test", "почтовые ящики идут первыми"
         assert tabs["sales@mail.test"]["count"] == 2 and tabs["sales@mail.test"]["open"] == 2
         in_telegram = sum(lead["channel"] == "telegram" for lead in data["leads"])
-        assert tabs["telegram"]["title"] == "Telegram" and tabs["telegram"]["count"] == in_telegram
+        assert tabs["telegram"]["title"] == "Telegram (JSON)" and tabs["telegram"]["count"] == in_telegram
         # Под ящиком «непрочитанные» по срочности (и ещё не разобранные) в сумме дают число ящика.
         for tab in data["sources"]:
             parts = ("high", "medium", "low", "None")

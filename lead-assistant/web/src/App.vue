@@ -59,6 +59,63 @@ function onSearch() {
   }, 250)
 }
 
+// --- боковая панель: свернуть в полосу иконок и менять ширину перетаскиванием края ---
+const SIDEBAR_KEY = 'leads.sidebar'
+const DEFAULT_REM = 15.5
+const MIN_REM = 12
+const MAX_REM = 32
+function loadSidebar(): { collapsed?: boolean; width?: number } {
+  try {
+    return JSON.parse(localStorage.getItem(SIDEBAR_KEY) ?? '{}') as { collapsed?: boolean; width?: number }
+  } catch {
+    return {}
+  }
+}
+const savedSidebar = loadSidebar()
+const collapsed = ref(!!savedSidebar.collapsed)
+const widthRem = ref(Math.min(MAX_REM, Math.max(MIN_REM, savedSidebar.width ?? DEFAULT_REM)))
+const wideQuery = window.matchMedia('(min-width: 1025px)')
+const wide = ref(wideQuery.matches)
+const onWide = (e: MediaQueryListEvent) => (wide.value = e.matches)
+wideQuery.addEventListener('change', onWide)
+onUnmounted(() => wideQuery.removeEventListener('change', onWide))
+const rail = computed(() => collapsed.value && wide.value)
+const shellStyle = computed(() => (wide.value ? { '--sidebar': rail.value ? '4.6rem' : `${widthRem.value}rem` } : {}))
+watch([collapsed, widthRem], () => {
+  try {
+    localStorage.setItem(SIDEBAR_KEY, JSON.stringify({ collapsed: collapsed.value, width: widthRem.value }))
+  } catch {
+    /* настройка действует до перезагрузки */
+  }
+})
+const resizing = ref(false)
+function rootPx(): number {
+  return parseFloat(getComputedStyle(document.documentElement).fontSize) || 15
+}
+function startResize(event: PointerEvent) {
+  if (rail.value) return
+  const startX = event.clientX
+  const start = widthRem.value
+  const px = rootPx()
+  resizing.value = true
+  const move = (e: PointerEvent) => {
+    widthRem.value = Math.round(Math.min(MAX_REM, Math.max(MIN_REM, start + (e.clientX - startX) / px)) * 10) / 10
+  }
+  const up = () => {
+    resizing.value = false
+    window.removeEventListener('pointermove', move)
+    window.removeEventListener('pointerup', up)
+  }
+  window.addEventListener('pointermove', move)
+  window.addEventListener('pointerup', up)
+}
+function resizeByKey(event: KeyboardEvent) {
+  if (event.key === 'ArrowLeft') widthRem.value = Math.max(MIN_REM, widthRem.value - 1)
+  else if (event.key === 'ArrowRight') widthRem.value = Math.min(MAX_REM, widthRem.value + 1)
+  else return
+  event.preventDefault()
+}
+
 async function logout() {
   await api.post('/api/auth/logout').catch(() => undefined)
   session.user = null
@@ -67,24 +124,52 @@ async function logout() {
 </script>
 
 <template>
-  <div v-if="session.user && !route.meta.public && !session.user.must_change_password" class="shell" :class="{ 'menu-open': menuOpen }">
+  <div
+    v-if="session.user && !route.meta.public && !session.user.must_change_password"
+    class="shell"
+    :class="{ 'menu-open': menuOpen, rail, resizing }"
+    :style="shellStyle"
+  >
     <aside class="sidebar" aria-label="Разделы">
-      <RouterLink to="/leads" class="logo" aria-label="Certa — на главную"><BrandLogo /></RouterLink>
+      <div class="side-head">
+        <RouterLink to="/leads" class="logo" aria-label="Certa — на главную"><BrandLogo :compact="rail" /></RouterLink>
+        <button
+          class="ghost icon-only collapse-btn"
+          :title="rail ? 'Развернуть панель' : 'Свернуть панель'"
+          :aria-label="rail ? 'Развернуть панель' : 'Свернуть панель'"
+          :aria-expanded="!rail"
+          @click="collapsed = !collapsed"
+        >
+          <Icon name="back" class="collapse-icon" />
+        </button>
+      </div>
       <nav class="nav">
-        <RouterLink to="/leads" class="nav-item" :class="{ current: onMail }" @click="applyFolder({})">
+        <RouterLink to="/leads" class="nav-item" :class="{ current: onMail }" title="Почта" @click="applyFolder({})">
           <Icon name="inbox" size="1.2rem" />
-          <span class="label">Почта</span>
+          <span v-marquee class="label">Почта</span>
           <span v-if="waiting" class="nav-count num">{{ waiting }}</span>
         </RouterLink>
-        <FolderNav v-if="mail.data && onMail" class="mail-folders" @select="openFolder" />
+        <FolderNav v-if="mail.data && onMail && !rail" class="mail-folders" @select="openFolder" />
         <div class="nav-sep" role="separator"></div>
         <template v-for="item in NAV" :key="item.to">
-          <RouterLink v-if="!item.role || can(item.role)" :to="item.to" class="nav-item" :title="item.hint">
+          <RouterLink v-if="!item.role || can(item.role)" :to="item.to" class="nav-item" :title="rail ? item.label : item.hint">
             <Icon :name="item.icon" size="1.2rem" />
-            <span class="label">{{ item.label }}</span>
+            <span v-marquee class="label">{{ item.label }}</span>
           </RouterLink>
         </template>
       </nav>
+      <div
+        v-if="!rail"
+        class="resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Ширина панели: тяните или используйте стрелки; двойной щелчок — обычная ширина"
+        title="Потяните, чтобы изменить ширину. Двойной щелчок — обычная ширина."
+        tabindex="0"
+        @pointerdown.prevent="startResize"
+        @dblclick="widthRem = DEFAULT_REM"
+        @keydown="resizeByKey"
+      ></div>
     </aside>
     <div class="scrim" aria-hidden="true" @click="menuOpen = false"></div>
 
@@ -153,7 +238,29 @@ async function logout() {
   background: var(--surface); border-right: 1px solid var(--line);
   padding: 0 0.75rem 1.25rem; display: flex; flex-direction: column; scrollbar-width: thin;
 }
-.logo { display: block; height: 2.6rem; margin: 0.85rem 0.55rem 1.1rem; }
+.side-head { display: flex; align-items: center; gap: 0.25rem; margin: 0.85rem 0 1.1rem 0.55rem; }
+.logo { display: block; height: 2.6rem; flex: 1; min-width: 0; }
+.collapse-btn { flex: none; color: var(--muted); }
+.collapse-icon { transition: transform 0.2s ease; }
+.rail .collapse-icon { transform: rotate(180deg); }
+.sidebar { position: sticky; }
+.resizer {
+  position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; z-index: 3;
+  background: transparent; transition: background-color 0.15s;
+}
+.resizer:hover, .resizer:focus-visible, .resizing .resizer { background: color-mix(in srgb, var(--accent) 35%, transparent); outline: none; }
+.resizing { user-select: none; cursor: col-resize; }
+/* Свёрнутая панель: только иконки, счётчик — точкой, название — в подсказке. */
+.rail .sidebar { padding: 0 0.5rem 1.25rem; overflow-x: hidden; }
+.rail .side-head { flex-direction: column; margin: 0.85rem 0 1rem; gap: 0.6rem; }
+.rail .logo { height: 2.1rem; flex: none; }
+.rail .nav-item { justify-content: center; padding: 0.55rem 0; position: relative; }
+.rail .nav-item .label { display: none; }
+.rail .nav-count {
+  position: absolute; top: 0.3rem; right: 0.45rem; min-width: 0; width: 0.6rem; height: 0.6rem; padding: 0;
+  font-size: 0; line-height: 0; box-shadow: 0 0 0 2px var(--surface);
+}
+.nav-item .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav-item {
   display: flex; align-items: center; gap: 0.7rem; padding: 0.5rem 0.65rem; border-radius: var(--radius-s);
@@ -216,6 +323,7 @@ async function logout() {
   .menu-open .sidebar { transform: none; }
   .menu-open .scrim { display: block; position: fixed; inset: 0; z-index: 40; background: rgb(15 21 32 / 0.45); }
   .menu-btn { display: inline-flex; }
+  .collapse-btn, .resizer { display: none; }
   .topbar { padding: 0 1rem; gap: 0.5rem; }
   .topbar-logo { display: block; height: 1.9rem; flex: none; }
 }
