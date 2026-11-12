@@ -50,6 +50,13 @@ fi
 "$PY" -m pip install --disable-pip-version-check --require-hashes -r "$LOCK"
 "$PY" -m pip install --disable-pip-version-check --no-deps --no-build-isolation -e .
 
+# Windows (Git Bash): проектный .mcp.json запускает .venv/bin/python — кладём туда
+# лаунчер окружения, чтобы MCP-сервер стартовал в Claude Code так же, как в Linux.
+if [ -x ".venv/Scripts/python.exe" ] && [ ! -e ".venv/bin/python.exe" ]; then
+  mkdir -p .venv/bin
+  cp .venv/Scripts/python.exe .venv/bin/python.exe
+fi
+
 if [ ! -f data/leads.json ]; then
   cp data/leads.original.json data/leads.json
   echo "Создана рабочая копия data/leads.json (оригинал: data/leads.original.json)."

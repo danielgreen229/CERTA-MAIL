@@ -10,6 +10,25 @@
 
 Описание процесса и критерии успеха: [docs/PROCESS.md](docs/PROCESS.md).
 
+## Рабочее место менеджера
+
+Веб-интерфейс: список заявок с поиском и фильтрами, карточка (обращение, извлечённые
+сведения, основания, черновик, следующий шаг, источники), «Принять / Исправить /
+Отклонить» с историей, фоновая обработка, очередь проверки, база знаний,
+подключения, показатели качества, роли.
+
+```bash
+docker compose up -d                                                 # CPU, Qwen3-8B
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d # NVIDIA, Qwen3-14B
+bash start.sh                                                        # без Docker
+```
+
+Адрес: `http://127.0.0.1:8000`. Начальный пароль администратора — в
+`data/initial-admin.txt` (в Docker: `docker compose exec web cat /data/initial-admin.txt`),
+его нужно сменить при первом входе. Архитектура и хранилища —
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), эксплуатация, диагностика и резервные
+копии — [docs/OPERATIONS.md](docs/OPERATIONS.md).
+
 ## Установка на чистом Ubuntu
 
 Нужны Python 3.12 и доступ в интернет на время установки (PyPI, GitHub, Hugging

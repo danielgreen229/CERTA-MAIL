@@ -1,0 +1,3 @@
+# Зафиксированные зависимости с хешами. Пересборка:
+#   pip-compile --generate-hashes --allow-unsafe --strip-extras --no-header [--extra dev] \n#     --output-file requirements[-dev].lock pyproject.toml requirements-build.in
+# затем вернуть маркер sys_platform == win32 для pywin32 и colorama.

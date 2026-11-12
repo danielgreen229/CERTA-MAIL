@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lead-assistant"
-version = "1.0.0"
+version = "2.0.0"
 description = "AI-помощник менеджера по заявкам: MCP-сервер над JSON и агент на локальной модели"
 requires-python = ">=3.12"
 dependencies = [
@@ -30,6 +30,7 @@ leads-doctor = "lead_assistant.doctor:main"
 leads-llm = "lead_assistant.llm:main"
 leads-web = "lead_assistant.web.api:main"
 leads-worker = "lead_assistant.web.worker:main"
+leads-backup = "lead_assistant.web.backup:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

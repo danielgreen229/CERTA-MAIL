@@ -22,6 +22,8 @@ services:
     command: ["python", "-m", "lead_assistant.llm", "fetch-model", "--model", "${LEADS_LLM_MODEL:-qwen3-8b}"]
     volumes:
       - leads-llm:/llm
+    healthcheck:
+      disable: true
     restart: "no"
 
   llm:

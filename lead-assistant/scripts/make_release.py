@@ -31,8 +31,41 @@ INCLUDE_FILES = (
     ".claude/settings.json",
     ".claude/commands/process-leads.md",
     "data/leads.original.json",
+    "start.sh",
+    "stop.sh",
+    "Dockerfile",
+    "docker-compose.yml",
+    "docker-compose.gpu.yml",
+    ".dockerignore",
+    "requirements.README",
+    "web/package.json",
+    "web/package-lock.json",
+    "web/index.html",
+    "web/tsconfig.json",
+    "web/vite.config.ts",
 )
-INCLUDE_DIRS = ("src", "tests", "scripts", "evals", "docs")
+# web/dist — готовая сборка интерфейса: архив запускается без Node.js.
+INCLUDE_DIRS = ("src", "tests", "scripts", "evals", "docs", "web/src", "web/dist")
+TEXT_SUFFIXES = {
+    ".py",
+    ".md",
+    ".txt",
+    ".json",
+    ".toml",
+    ".sh",
+    ".lock",
+    ".in",
+    ".yml",
+    ".ts",
+    ".vue",
+    ".html",
+    ".css",
+    ".js",
+    ".README",
+    ".gitignore",
+    ".dockerignore",
+    "",
+}
 EXCLUDE_PARTS = {"__pycache__", ".mypy_cache", ".ruff_cache", ".pytest_cache"}
 EXCLUDE_SUFFIXES = {".pyc", ".egg-info"}
 
@@ -68,7 +101,9 @@ def main(argv: list[str]) -> int:
         for path in files:
             relative = path.relative_to(ROOT).as_posix()
             # Текст хранится с LF независимо от системы, на которой собран архив.
-            data = path.read_bytes().replace(b"\r\n", b"\n")
+            data = path.read_bytes()
+            if path.suffix in TEXT_SUFFIXES or path.name in TEXT_SUFFIXES:
+                data = data.replace(b"\r\n", b"\n")
             info = tarfile.TarInfo(f"{TOP_LEVEL}/{relative}")
             info.size = len(data)
             info.mtime = int(path.stat().st_mtime)

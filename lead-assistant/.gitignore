@@ -23,3 +23,4 @@ data/app.db*
 data/uploads/
 data/initial-admin.txt
 .env
+data/.run/

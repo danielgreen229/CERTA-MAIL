@@ -9,12 +9,15 @@ MCP-сервер над `leads.json` (`list_leads`, `get_lead`, `update_lead`) �
 
 ```bash
 cd lead-assistant
-scripts/install.sh            # venv, зависимости по хешам, llama.cpp и модель Qwen3 (выбор по железу)
-.venv/bin/process-leads       # Windows: .venv/Scripts/process-leads — «обработай новые заявки»
+docker compose up -d          # рабочее место на http://127.0.0.1:8000 (модель Qwen3-8B на CPU)
+bash start.sh                 # то же без Docker; данные и настройки сохраняются между запусками
 ```
 
-В Claude Code: открыть папку `lead-assistant` (проектный `.mcp.json` подключает сервер `leads`)
-и ввести `/process-leads` или «обработай новые заявки».
+Обработка одной командой без интерфейса: `scripts/install.sh`, затем `.venv/bin/process-leads`
+(Windows: `.venv/Scripts/process-leads`). В Claude Code: открыть папку `lead-assistant`
+(проектный `.mcp.json` подключает сервер `leads`) и ввести `/process-leads` или «обработай новые
+заявки». Подробнее — [`docs/OPERATIONS.md`](lead-assistant/docs/OPERATIONS.md),
+[`docs/ARCHITECTURE.md`](lead-assistant/docs/ARCHITECTURE.md).
 
 ## Решения и почему
 
