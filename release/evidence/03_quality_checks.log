@@ -1,39 +1,27 @@
-# Качество кода: ruff, ruff format --check, mypy, pytest
-# UTC: 2026-11-12T01:43:01Z; MINGW64_NT-10.0-26200 3.6.9-b4195d69.x86_64; Python 3.12.16
-
-$ .venv/Scripts/python.exe -m ruff check .
+# Проверки качества, этап 2 (финальный код). UTC: 2026-11-12T03:58:05Z
+$ ruff check .
 All checks passed!
-код возврата: 0
-
-$ .venv/Scripts/python.exe -m ruff format --check .
-151 files already formatted
-код возврата: 0
-
-$ .venv/Scripts/python.exe -m mypy
-Success: no issues found in 49 source files
-код возврата: 0
-
-$ .venv/Scripts/python.exe -m mypy --platform linux
-Success: no issues found in 49 source files
-код возврата: 0
-
-$ .venv/Scripts/python.exe -m pytest -q
-........................................................................ [ 37%]
-........................................................................ [ 75%]
-..........................................s....                          [100%]
+код: 0
+$ ruff format --check .
+110 files already formatted
+код: 0
+$ mypy (strict)
+Success: no issues found in 72 source files
+код: 0
+$ mypy --platform linux
+Success: no issues found in 72 source files
+код: 0
+$ pytest
+......                                                                   [100%]
 =========================== short test summary info ===========================
-SKIPPED [1] tests\test_storage.py:347: ����� ������� POSIX
-190 passed, 1 skipped in 93.51s (0:01:33)
-код возврата: 0
-
-$ зависимости проекта (pyproject.toml)
-dependencies = [
-    "mcp>=2.3,<3",
-    "pydantic>=2.14,<3",
-]
-
-[project.optional-dependencies]
-dev = ["ruff", "mypy", "pytest"]
-# Необязательный бэкенд для тех, у кого есть авторизация Claude (--backend claude).
-claude = ["claude-agent-sdk>=0.2.180,<0.3"]
-закреплённых пакетов: рабочих 31, с инструментами разработки 43; хешей в requirements.lock: 500
+SKIPPED [1] tests\test_storage.py:347: права доступа POSIX
+221 passed, 1 skipped in 94.78s (0:01:34)
+код: 0
+$ cd web && npm run build   # vue-tsc --noEmit + vite build
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.41 kB │ gzip:  0.32 kB
+dist/assets/index-DWIqoQ0y.css    8.23 kB │ gzip:  2.39 kB
+dist/assets/index-DIFY4xy0.js   139.33 kB │ gzip: 51.27 kB
+✓ built in 658ms
+код: 0

@@ -23,6 +23,7 @@ from typing import Any
 
 from lead_assistant.agent import AgentBackend
 from lead_assistant.backends import open_backend, options_from_args, use_utf8_console
+from lead_assistant.cli import NoModelBackend
 from lead_assistant.cli import build_parser as cli_parser
 from lead_assistant.llm import LlmSetupError
 from lead_assistant.models import STATUS_NEW, LeadError
@@ -133,8 +134,13 @@ def execute_job(
     run: dict[str, Any] | None = None
     try:
         if not new_ids:
+            # Модель не запускается, но прогон со сверкой файла записывается: в run.json
+            # видно, что новых заявок ноль и контрольная сумма файла не изменилась.
+            config.skip_model_if_empty = True
+            run = asyncio.run(run_processing(config, NoModelBackend(), echo=echo))
+            jobs.add_run(conn, job["id"], run["run_id"])
+            summary: dict[str, Any] = {**summarize(run), "text": "Новых заявок нет."}
             state = "done"
-            summary: dict[str, Any] = {"text": "Новых заявок нет.", "counts": {"found": 0}}
         else:
             with tempfile.NamedTemporaryFile(
                 prefix="llm-server-", suffix=".log", dir=paths.runs_dir, delete=False

@@ -203,6 +203,8 @@ onUnmounted(() => window.clearInterval(timer))
 .leads li.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .text { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; }
 .card-pane { position: sticky; top: 64px; align-self: start; max-height: calc(100vh - 80px); overflow: auto; }
+.with-card .filters { grid-template-columns: 1fr 1fr; }
+.with-card .filters input[type='search'] { grid-column: 1 / -1; }
 @media (max-width: 1100px) {
   .filters { grid-template-columns: 1fr 1fr; }
   .filters input[type='search'] { grid-column: 1 / -1; }

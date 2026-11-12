@@ -1,0 +1,112 @@
+# Чистая распаковка архива 2.0.0, запуск bash start.sh, приёмка через API
+# каталог: /tmp/rel2 box/my project dir/lead-assistant
+# UTC: 2026-11-12T03:49:15Z
+
+$ bash start.sh
+== Первый запуск: установка окружения и модели
+
+Successfully installed <пакеты из requirements.lock>
+Successfully installed <пакеты из requirements.lock>
+Создана рабочая копия data/leads.json (оригинал: data/leads.original.json).
+
+сервер: C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant\.llm\bin\b12110-win-x64-vulkan\llama-server.exe
+модель: C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant\.llm\models\Qwen3-14B-Q4_K_M.gguf (sha256 проверена)
+выбор сохранён: модель qwen3-14b, сборка vulkan
+
+[OK  ] Python >= 3.12: 3.12.16 (C:\Users\Dozer\AppData\Local\Temp\rel2 box\my project dir\lead-assistant\.venv\Scripts\python.exe)
+[OK  ] пакет mcp: 2.3.0
+[OK  ] пакет pydantic: 2.14.3
+[OK  ] правила агента: версия 1.2.1, sha256 f629393fbc68
+[OK  ] файл заявок: C:\Users\Dozer\AppData\Local\Temp\rel2 box\my project dir\lead-assistant\data\leads.json — заявок 15, статусы {'new': 14, 'processed': 1}
+[OK  ] каталог данных доступен для записи: C:\Users\Dozer\AppData\Local\Temp\rel2 box\my project dir\lead-assistant\data
+[OK  ] MCP-сервер через stdio: инструменты: get_lead, list_leads, update_lead
+[OK  ] сервер llama.cpp b12110 (vulkan): C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant\.llm\bin\b12110-win-x64-vulkan\llama-server.exe
+[OK  ] модель qwen3-14b: C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant\.llm\models\Qwen3-14B-Q4_K_M.gguf (~9.0 ГБ)
+Итог: готово к работе
+
+Рабочее место запущено: http://127.0.0.1:8200
+Первый вход: логин и начальный пароль — в файле data/initial-admin.txt
+(доступен только владельцу; пароль нужно сменить при первом входе, файл удалится сам).
+Журналы: data/.run/web.log, data/.run/worker.log · остановка: bash stop.sh
+код возврата start.sh: 0; время: 45 с
+
+$ python -m lead_assistant.web.acceptance --url http://127.0.0.1:8200
+--- PASS: приложение отвечает — {'ok': True, 'version': '2.0.0', 'leads': 15, 'problems': [], 'active_job': None, 'worker_heartbeat': None}
+--- PASS: первый вход: начальный пароль сменён
+--- PASS: вход администратора
+--- PASS: задача поставлена из API — {'id': 'job-20261112T035001Z-5e038e', 'kind': 'process', 'state': 'queued', 'created_at': '2026-11-12T03:50:01Z', 'start
+--- PASS: второй запуск отклонён, пока идёт первый
+    задача job-20261112T035001Z-5e038e: queued 0/?
+    задача job-20261112T035001Z-5e038e: running 0/14
+    задача job-20261112T035001Z-5e038e: running 1/14
+    задача job-20261112T035001Z-5e038e: running 2/14
+    задача job-20261112T035001Z-5e038e: running 3/14
+    задача job-20261112T035001Z-5e038e: running 4/14
+    задача job-20261112T035001Z-5e038e: running 5/14
+    задача job-20261112T035001Z-5e038e: running 6/14
+    задача job-20261112T035001Z-5e038e: running 7/14
+    задача job-20261112T035001Z-5e038e: running 8/14
+    задача job-20261112T035001Z-5e038e: running 9/14
+    задача job-20261112T035001Z-5e038e: running 10/14
+    задача job-20261112T035001Z-5e038e: running 11/14
+    задача job-20261112T035001Z-5e038e: running 12/14
+    задача job-20261112T035001Z-5e038e: running 13/14
+    задача job-20261112T035001Z-5e038e: running 14/14
+    задача job-20261112T035001Z-5e038e: done 14/14
+--- PASS: реальный прогон модели в фоновом обработчике — модель Qwen3-14B-Q4_K_M.gguf, счётчики {'found': 14, 'written': 14, 'already_processed': 0, 'failed': 0}, прогоны ['20261112T035021Z-339417']
+    сводка для руководителя:
+      # Сводка обработки заявок
+      
+      Прогон `20261112T035021Z-339417` · дата 2026-11-12 · модель Qwen3-14B-Q4_K_M.gguf · правила 1.2.1
+      Статус: **выполнен без замечаний**
+      
+      ## Итог
+      
+      - Найдено новых: 14 (ID: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
+      - Записано: 14
+      - Уже были обработаны: 0
+      - Ошибки: 0
+      - Осталось `new` в файле: 0
+      - По категориям: sale — 5, complaint — 3, question — 3, spam — 3
+      - По приоритетам: high — 4, medium — 6, low — 4
+      
+      ## Срочные (high)
+    сверка leads.json с оригиналом по ID и полям:
+оригинал : C:\Users\Dozer\AppData\Local\Temp\rel2 box\my project dir\lead-assistant\data\leads.original.json  sha256=42e058f2f594e3f32255ca8f9254c052046345eb774cfdb4965455c15ab545a9
+результат: C:\Users\Dozer\AppData\Local\Temp\rel2 box\my project dir\lead-assistant\data\leads.json  sha256=970feabb4b3f76487212edf1d0ee25a8edf07c59532cfd10a17c779e98c6ed86
+  ID  было       стало      категория  приоритет черновик
+   1  new        processed  sale       medium    267 симв.
+   2  new        processed  complaint  high      256 симв.
+   3  new        processed  spam       low       null
+   4  new        processed  sale       medium    251 симв.
+   5  new        processed  question   medium    253 симв.
+   6  new        processed  spam       low       null
+   7  new        processed  sale       high      291 симв.
+   8  new        processed  question   low       193 симв.
+   9  new        processed  complaint  high      221 симв.
+  10  new        processed  question   medium    242 симв.
+  11  new        processed  sale       medium    173 симв.
+  12  new        processed  spam       low       null
+  13  new        processed  complaint  high      256 симв.
+  14  new        processed  sale       medium    299 симв.
+  15  processed  processed  question   low       33 симв.
+исходных new: 14; осталось new: 0 
+ранее обработанные без изменений: [15]
+сверка пройдена: данные сохранены, изменены только разрешённые поля
+--- PASS: сверка файла по ID и полям
+--- PASS: файл изменён прогоном — sha256 970feabb4b3f76487212edf1d0ee25a8edf07c59532cfd10a17c779e98c6ed86
+    задача job-20261112T035302Z-a2f3f4: queued 0/?
+    задача job-20261112T035302Z-a2f3f4: done 0/0
+--- PASS: повторный запуск: ноль новых, контрольная сумма прежняя — sha256 970feabb4b3f76487212edf1d0ee25a8edf07c59532cfd10a17c779e98c6ed86
+--- PASS: все заявки ждут решения менеджера — на проверку 9, срочных 4
+--- PASS: решения менеджера по версии результата и показатели качества — доля принятых без правок 0.333
+ИТОГ: пройдено (11/11)
+код возврата приёмки: 0
+
+$ bash stop.sh && bash start.sh   # повторный запуск сохраняет данные
+остановлен worker (1546)
+остановлен web (1545)
+
+Рабочее место запущено: http://127.0.0.1:8200
+Журналы: data/.run/web.log, data/.run/worker.log · остановка: bash stop.sh
+{"ok":true,"version":"2.0.0","leads":15,"problems":[],"active_job":null,"worker_heartbeat":null}

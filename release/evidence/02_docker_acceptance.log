@@ -1,0 +1,84 @@
+# Docker: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d; приёмка внутри контейнера web
+# UTC: 2026-11-12T03:54:37Z
+$ docker compose ps
+SERVICE   IMAGE                                           STATE     STATUS
+llm       ghcr.io/ggml-org/llama.cpp:server-cuda-b12110   running   Up 31 seconds (healthy)
+model     lead-assistant:2.0.0                            exited    Exited (0) 15 seconds ago
+web       lead-assistant:2.0.0                            running   Up 16 seconds (healthy)
+worker    lead-assistant:2.0.0                            running   Up 10 seconds
+
+$ docker compose logs model
+model-1  | модель: /llm/models/Qwen3-14B-Q4_K_M.gguf (sha256 проверена)
+
+$ docker compose exec web python -m lead_assistant.web.acceptance
+--- PASS: приложение отвечает — {'ok': True, 'version': '2.0.0', 'leads': 15, 'problems': [], 'active_job': None, 'worker_heartbeat': None}
+--- PASS: первый вход: начальный пароль сменён
+--- PASS: вход администратора
+--- PASS: задача поставлена из API — {'id': 'job-20261112T035439Z-70ecab', 'kind': 'process', 'state': 'queued', 'created_at': '2026-11-12T03:54:39Z', 'start
+--- PASS: второй запуск отклонён, пока идёт первый
+    задача job-20261112T035439Z-70ecab: queued 0/?
+    задача job-20261112T035439Z-70ecab: running 0/14
+    задача job-20261112T035439Z-70ecab: running 1/14
+    задача job-20261112T035439Z-70ecab: running 2/14
+    задача job-20261112T035439Z-70ecab: running 3/14
+    задача job-20261112T035439Z-70ecab: running 4/14
+    задача job-20261112T035439Z-70ecab: running 5/14
+    задача job-20261112T035439Z-70ecab: running 6/14
+    задача job-20261112T035439Z-70ecab: running 7/14
+    задача job-20261112T035439Z-70ecab: running 8/14
+    задача job-20261112T035439Z-70ecab: running 9/14
+    задача job-20261112T035439Z-70ecab: running 10/14
+    задача job-20261112T035439Z-70ecab: running 11/14
+    задача job-20261112T035439Z-70ecab: running 12/14
+    задача job-20261112T035439Z-70ecab: running 13/14
+    задача job-20261112T035439Z-70ecab: running 14/14
+    задача job-20261112T035439Z-70ecab: done 14/14
+--- PASS: реальный прогон модели в фоновом обработчике — модель qwen3-14b, счётчики {'found': 14, 'written': 14, 'already_processed': 0, 'failed': 0}, прогоны ['20261112T035441Z-33737b']
+    сводка для руководителя:
+      # Сводка обработки заявок
+      
+      Прогон `20261112T035441Z-33737b` · дата 2026-11-12 · модель qwen3-14b · правила 1.2.1
+      Статус: **выполнен без замечаний**
+      
+      ## Итог
+      
+      - Найдено новых: 14 (ID: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
+      - Записано: 14
+      - Уже были обработаны: 0
+      - Ошибки: 0
+      - Осталось `new` в файле: 0
+      - По категориям: sale — 5, complaint — 3, question — 3, spam — 3
+      - По приоритетам: high — 4, medium — 6, low — 4
+      
+      ## Срочные (high)
+    сверка leads.json с оригиналом по ID и полям:
+оригинал : /app/data/leads.original.json  sha256=42e058f2f594e3f32255ca8f9254c052046345eb774cfdb4965455c15ab545a9
+результат: /data/leads.json  sha256=f4a1205b5869556f5b9b1c6499ec89bdf6447ba1a86efeab4980ac32a336357b
+  ID  было       стало      категория  приоритет черновик
+   1  new        processed  sale       medium    267 симв.
+   2  new        processed  complaint  high      262 симв.
+   3  new        processed  spam       low       null
+   4  new        processed  sale       medium    251 симв.
+   5  new        processed  question   medium    253 симв.
+   6  new        processed  spam       low       null
+   7  new        processed  sale       high      291 симв.
+   8  new        processed  question   low       193 симв.
+   9  new        processed  complaint  high      213 симв.
+  10  new        processed  question   medium    214 симв.
+  11  new        processed  sale       medium    173 симв.
+  12  new        processed  spam       low       null
+  13  new        processed  complaint  high      279 симв.
+  14  new        processed  sale       medium    320 симв.
+  15  processed  processed  question   low       33 симв.
+исходных new: 14; осталось new: 0 
+ранее обработанные без изменений: [15]
+сверка пройдена: данные сохранены, изменены только разрешённые поля
+--- PASS: сверка файла по ID и полям
+--- PASS: файл изменён прогоном — sha256 f4a1205b5869556f5b9b1c6499ec89bdf6447ba1a86efeab4980ac32a336357b
+    задача job-20261112T035715Z-b71610: queued 0/?
+    задача job-20261112T035715Z-b71610: done 0/0
+--- PASS: повторный запуск: ноль новых, контрольная сумма прежняя — sha256 f4a1205b5869556f5b9b1c6499ec89bdf6447ba1a86efeab4980ac32a336357b
+--- PASS: все заявки ждут решения менеджера — на проверку 9, срочных 4
+--- PASS: решения менеджера по версии результата и показатели качества — доля принятых без правок 0.333
+ИТОГ: пройдено (11/11)
+код возврата приёмки: 0

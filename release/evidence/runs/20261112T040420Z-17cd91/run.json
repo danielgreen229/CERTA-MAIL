@@ -1,0 +1,74 @@
+{
+  "run_id": "20261112T040420Z-17cd91",
+  "started_at": "2026-11-12T04:04:20.880Z",
+  "today": "2026-11-12",
+  "leads_file": {
+    "path": "C:\\Users\\Dozer\\AppData\\Local\\Temp\\rel3 box\\my project dir\\lead-assistant\\data\\leads.json",
+    "sha256_before": "970feabb4b3f76487212edf1d0ee25a8edf07c59532cfd10a17c779e98c6ed86",
+    "sha256_after": "970feabb4b3f76487212edf1d0ee25a8edf07c59532cfd10a17c779e98c6ed86",
+    "changed": false
+  },
+  "rules": {
+    "version": "1.2.1",
+    "sha256": "f629393fbc68e8c3b24b34f5b76d8e71b51543c3fc5e251dbd54a273cc21993e"
+  },
+  "runtime": {
+    "backend": "NoModelBackend",
+    "model_requested": null,
+    "models_seen": [],
+    "tools": null,
+    "mcp_servers": null,
+    "only_project_tools": null,
+    "model": null
+  },
+  "error": null,
+  "reconciliation": {
+    "found_ids": [],
+    "written_ids": [],
+    "already_processed_ids": [],
+    "failed": [],
+    "counts": {
+      "found": 0,
+      "written": 0,
+      "already_processed": 0,
+      "failed": 0
+    },
+    "counts_consistent": true,
+    "remaining_new_ids": [],
+    "arrived_during_run_ids": [],
+    "by_category": {},
+    "by_priority": {},
+    "file_status_counts": {
+      "processed": 15
+    },
+    "leads": [],
+    "integrity_violations": [],
+    "report_mismatches": [],
+    "warnings": [],
+    "model_report_available": false
+  },
+  "metrics": {
+    "duration_ms": 0,
+    "runtime_duration_ms": null,
+    "api_duration_ms": null,
+    "num_turns": null,
+    "sessions": 0,
+    "model_invoked": false,
+    "tool_calls": {
+      "total": 0,
+      "by_tool": {},
+      "errors_by_code": {},
+      "without_result": 0,
+      "avg_duration_ms": {}
+    },
+    "tokens": null,
+    "tokens_status": "unavailable",
+    "cost": {
+      "reported_usd": null,
+      "estimated_usd": null,
+      "status": "unavailable"
+    }
+  },
+  "status": "ok",
+  "finished_at": "2026-11-12T04:04:20.882Z"
+}

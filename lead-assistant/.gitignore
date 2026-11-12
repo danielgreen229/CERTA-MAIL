@@ -24,3 +24,5 @@ data/uploads/
 data/initial-admin.txt
 .env
 data/.run/
+data/backups/
+data/acceptance-admin.txt

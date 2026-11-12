@@ -168,21 +168,23 @@ def create_app(paths: AppPaths) -> Starlette:
             {"leads": [v.summary() for v in filtered], "counts": counts, "active_job": active}
         )
 
+    def full_detail(conn: sqlite3.Connection, user: auth.User, key: str) -> dict[str, Any]:
+        """Карточка заявки целиком — одна и та же для чтения и для ответа на решение."""
+        view = leads.find_view(conn, store, key)
+        detail = view.detail(leads.history(conn, key))
+        detail["knowledge"] = kb.search(conn, user, str(view.lead.get("text") or ""), limit=3)
+        shipments = []
+        for item in view.extraction["fields"].get("order") or []:
+            status = connectors.shipment_status(conn, str(item["value"]["number"]))
+            if status:
+                shipments.append(status)
+        detail["shipments"] = shipments
+        return detail
+
     def lead_detail(request: Request) -> Response:
-        key = request.path_params["key"]
         with db() as conn:
             user = current_user(request, conn)
-            view = leads.find_view(conn, store, key)
-            detail = view.detail(leads.history(conn, key))
-            sources = kb.search(conn, user, str(view.lead.get("text") or ""), limit=3)
-            shipments = []
-            for item in view.extraction["fields"].get("order") or []:
-                status = connectors.shipment_status(conn, str(item["value"]["number"]))
-                if status:
-                    shipments.append(status)
-        detail["knowledge"] = sources
-        detail["shipments"] = shipments
-        return JSONResponse(detail)
+            return JSONResponse(full_detail(conn, user, request.path_params["key"]))
 
     async def decide(request: Request) -> Response:
         key = request.path_params["key"]
@@ -201,8 +203,7 @@ def create_app(paths: AppPaths) -> Starlette:
                 data.get("draft_reply"),
                 data.get("reason"),
             )
-            view = leads.find_view(conn, store, key)
-            detail = view.detail(leads.history(conn, key))
+            detail = full_detail(conn, user, key)
         return JSONResponse({**outcome, "lead": detail})
 
     async def assign(request: Request) -> Response:

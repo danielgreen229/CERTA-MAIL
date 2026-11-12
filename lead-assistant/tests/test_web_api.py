@@ -95,6 +95,8 @@ def test_decision_is_bound_to_result_version_and_kept_in_history(tmp_path: Path)
             "/api/leads/7/decision", json={"action": "accept", "result_version": version}
         )
         assert accepted.status_code == 200 and accepted.json()["lead"]["state"] == "accepted"
+        # Ответ на решение — та же полная карточка, что и при чтении (иначе интерфейс падал).
+        assert set(accepted.json()["lead"]) == set(detail)
         twice = client.post(
             "/api/leads/7/decision", json={"action": "accept", "result_version": version}
         )
