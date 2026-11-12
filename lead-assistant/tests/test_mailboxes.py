@@ -21,14 +21,29 @@ def test_admin_adds_configures_and_removes_extra_mailboxes(tmp_path: Path) -> No
         names = [c["name"] for c in admin.get("/api/connectors").json()["connectors"]]
         assert names[:3] == ["email", "email-2", "email-3"], "ящики идут первыми, по порядку"
         saved = admin.put("/api/connectors/email-2", json={"host": "imap.x", "user": "Sales@X.ru"})
-        assert saved.json()["title"] == "Почта: Sales@X.ru"
+        assert saved.json()["title"] == "Sales@X.ru"
         assert admin.delete("/api/connectors/email-3").status_code == 200
         main = admin.delete("/api/connectors/email")
         assert main.status_code == 409 and error_code(main) == "NOT_REMOVABLE"
         names = [c["name"] for c in admin.get("/api/connectors").json()["connectors"]]
         assert "email-3" not in names and "email" in names
     with client_for(paths, "manager") as manager:
-        assert manager.post("/api/connectors").status_code == 403
+        # Сотрудник добавляет свои ящики и ботов, видит и меняет только их.
+        own = manager.post("/api/connectors", json={"kind": "telegram"}).json()
+        assert own["name"].startswith("telegram-") and own["owner"]["name"]
+        mine = [c["name"] for c in manager.get("/api/connectors").json()["connectors"]]
+        assert mine == [own["name"]], "чужие ящики и сервисы компании сотруднику не видны"
+        assert (
+            manager.put(f"/api/connectors/{own['name']}", json={"bot_token": "1:x"}).status_code
+            == 200
+        )
+        assert manager.put("/api/connectors/email-2", json={"host": "x"}).status_code == 403
+        assert manager.put("/api/connectors/tms", json={"base_url": "http://x"}).status_code == 403
+        bad = manager.put(
+            f"/api/connectors/{own['name']}", json={"api_base": "https://t.me/my_bot"}
+        )
+        assert bad.status_code == 409 and "t.me" in bad.json()["error"]["message"]
+        assert manager.delete(f"/api/connectors/{own['name']}").status_code == 200
 
 
 def test_background_check_imports_new_messages_and_queues_processing(tmp_path: Path) -> None:

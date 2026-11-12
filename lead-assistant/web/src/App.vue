@@ -25,7 +25,7 @@ const NAV: NavItem[] = [
   { to: '/jobs', label: 'Разбор писем', icon: 'agent', hint: 'Как помощник разбирает новые письма' },
   { to: '/quality', label: 'Качество ответов', icon: 'quality', role: 'supervisor', hint: 'Сколько черновиков принято и почему правят' },
   { to: '/knowledge', label: 'База знаний', icon: 'book', hint: 'Документы, на которые опирается помощник' },
-  { to: '/connectors', label: 'Почта и сервисы', icon: 'plug', role: 'supervisor', hint: 'Почтовые ящики, Telegram, TMS' },
+  { to: '/connectors', label: 'Почта и сервисы', icon: 'plug', hint: 'Свои почтовые ящики и Telegram-боты' },
   { to: '/settings', label: 'Настройки', icon: 'settings', hint: 'Сроки, отделы, пользователи' },
 ]
 

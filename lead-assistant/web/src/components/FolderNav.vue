@@ -41,7 +41,7 @@ function toggle(id: string) {
 const f = (key: string) => mail.data?.folders[key] ?? 0
 const counts = computed(() => mail.data?.counts ?? {})
 const sourceIcon = (tab: SourceTab): IconName =>
-  tab.key === 'telegram' ? 'telegram' : tab.mailbox || tab.key === 'email' ? 'mail' : 'inbox'
+  tab.key === 'telegram' || tab.key.startsWith('@') ? 'telegram' : tab.mailbox || tab.key === 'email' ? 'mail' : 'inbox'
 const TONE = { high: 'high', medium: 'medium', low: 'low' } as const
 
 const groups = computed(() => [

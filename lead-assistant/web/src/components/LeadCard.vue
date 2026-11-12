@@ -361,7 +361,7 @@ const assigneeOptions = computed(() => [
             <h3><Icon name="send" /> Ответ клиенту</h3>
             <template v-if="lead.reply.available">
               <div class="small muted">
-                Кому: <b>{{ lead.reply.to }}</b> · от: {{ lead.reply.from }} · тема: {{ lead.reply.subject }}
+                Кому: <b>{{ lead.reply.to }}</b> · от: {{ lead.reply.from }}<template v-if="lead.reply.subject"> · тема: {{ lead.reply.subject }}</template>
               </div>
               <textarea
                 v-model="replyText"

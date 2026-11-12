@@ -98,52 +98,88 @@ class ConnectorError(Exception):
         self.message = message
 
 
-_EXTRA_MAILBOX = re.compile(r"email-(\d+)")
+_EXTRA = re.compile(r"(email|telegram)-(\d+)")
+# Каналы, которые сотрудник может добавлять сам в любом количестве.
+PERSONAL = ("email", "telegram")
 
 
 def spec_for(name: str) -> Spec:
-    """Описание подключения. Дополнительные почтовые ящики (email-2, email-3…) — та же «Почта»."""
+    """Описание подключения. Дополнительные ящики и боты (email-2, telegram-3…) — того же вида."""
     if name in SPECS:
         return SPECS[name]
-    if _EXTRA_MAILBOX.fullmatch(name):
-        return SPECS["email"]
+    match = _EXTRA.fullmatch(name)
+    if match:
+        return SPECS[match.group(1)]
     raise ConnectorError("NOT_FOUND", f"Нет подключения {name}")
 
 
 def is_mailbox(name: str) -> bool:
-    return name == "email" or bool(_EXTRA_MAILBOX.fullmatch(name))
+    return name == "email" or (bool(_EXTRA.fullmatch(name)) and name.startswith("email-"))
+
+
+def is_telegram(name: str) -> bool:
+    return name == "telegram" or (bool(_EXTRA.fullmatch(name)) and name.startswith("telegram-"))
+
+
+def names_of(conn: sqlite3.Connection, base: str) -> list[str]:
+    """Основное подключение вида и все добавленные: email, email-2, email-3…"""
+    extra = [
+        row[0]
+        for row in conn.execute("SELECT name FROM connectors WHERE name LIKE ?", (f"{base}-%",))
+        if _EXTRA.fullmatch(row[0])
+    ]
+    return [base, *sorted(extra, key=lambda name: int(name.rsplit("-", 1)[1]))]
 
 
 def mailbox_names(conn: sqlite3.Connection) -> list[str]:
-    """Все почтовые ящики: основной «email» и добавленные администратором."""
-    extra = [
-        row[0]
-        for row in conn.execute("SELECT name FROM connectors WHERE name LIKE 'email-%'")
-        if _EXTRA_MAILBOX.fullmatch(row[0])
-    ]
-    return ["email", *sorted(extra, key=lambda name: int(name.split("-")[1]))]
+    return names_of(conn, "email")
+
+
+def owner_of(conn: sqlite3.Connection, name: str) -> int | None:
+    row = conn.execute("SELECT owner_id FROM connectors WHERE name = ?", (name,)).fetchone()
+    return int(row[0]) if row and row[0] is not None else None
+
+
+def can_manage(conn: sqlite3.Connection, name: str, user: Any) -> bool:
+    """Администратор — любое подключение; сотрудник — свои ящики и ботов."""
+    if getattr(user, "role", None) == "admin":
+        return True
+    spec = spec_for(name)
+    return spec.name in PERSONAL and owner_of(conn, name) == getattr(user, "id", None)
+
+
+def add_connector(conn: sqlite3.Connection, base: str, user_id: int) -> dict[str, Any]:
+    if base not in PERSONAL:
+        raise ConnectorError("INVALID_ARGUMENT", "Добавить можно почтовый ящик или Telegram-бота")
+    numbers = [int(name.rsplit("-", 1)[1]) for name in names_of(conn, base)[1:]]
+    name = f"{base}-{max(numbers, default=1) + 1}"
+    with transaction(conn):
+        conn.execute(
+            "INSERT INTO connectors(name, config, state, owner_id) "
+            "VALUES (?, '{}', 'not_configured', ?)",
+            (name, user_id),
+        )
+        audit(conn, "connector_added", user_id, f"connector:{name}")
+    return _public(_load(conn, name), conn)
 
 
 def add_mailbox(conn: sqlite3.Connection, user_id: int) -> dict[str, Any]:
-    numbers = [int(name.split("-")[1]) for name in mailbox_names(conn)[1:]]
-    name = f"email-{max(numbers, default=1) + 1}"
-    with transaction(conn):
-        conn.execute(
-            "INSERT INTO connectors(name, config, state) VALUES (?, '{}', 'not_configured')",
-            (name,),
+    return add_connector(conn, "email", user_id)
+
+
+def remove_connector(conn: sqlite3.Connection, name: str, user_id: int) -> None:
+    if not _EXTRA.fullmatch(name):
+        raise ConnectorError(
+            "NOT_REMOVABLE", "Основное подключение не удаляется — очистите его параметры"
         )
-        audit(conn, "connector_added", user_id, f"connector:{name}")
-    return _public(_load(conn, name))
-
-
-def remove_mailbox(conn: sqlite3.Connection, name: str, user_id: int) -> None:
-    if not _EXTRA_MAILBOX.fullmatch(name):
-        raise ConnectorError("NOT_REMOVABLE", "Удалить можно только добавленный почтовый ящик")
     with transaction(conn):
         deleted = conn.execute("DELETE FROM connectors WHERE name = ?", (name,)).rowcount
         if not deleted:
             raise ConnectorError("NOT_FOUND", f"Нет подключения {name}")
         audit(conn, "connector_removed", user_id, f"connector:{name}")
+
+
+remove_mailbox = remove_connector
 
 
 def _load(conn: sqlite3.Connection, name: str) -> dict[str, Any]:
@@ -197,15 +233,23 @@ def apply_env_presets(
         if _load(conn, name)["state"] != "not_configured":
             continue
         record = configure(conn, name, values, user_id)
+        # Подключение из .env принадлежит администратору: он видит и правит его в интерфейсе.
+        conn.execute(
+            "UPDATE connectors SET owner_id = (SELECT id FROM users WHERE id = ?) "
+            "WHERE name = ? AND owner_id IS NULL",
+            (user_id, name),
+        )
+        conn.commit()
         if record["state"] == "configured":
             record = check(conn, name, user_id)
         applied[name] = record["state"]
     return applied
 
 
-def _public(record: dict[str, Any]) -> dict[str, Any]:
+def _public(record: dict[str, Any], conn: sqlite3.Connection | None = None) -> dict[str, Any]:
     spec = spec_for(record["name"])
     mailbox = str(record["config"].get("user") or "").strip()
+    bot = str(record["config"].get("bot_username") or "").strip()
     config = {
         key: (
             "••••••"
@@ -214,10 +258,24 @@ def _public(record: dict[str, Any]) -> dict[str, Any]:
         )
         for key in spec.fields
     }
+    if spec.kind == "imap":
+        title = mailbox or "Новый почтовый ящик"
+    elif spec.kind == "telegram":
+        title = f"@{bot}" if bot else "Новый Telegram-бот"
+    else:
+        title = spec.title
+    owner = None
+    if conn is not None:
+        row = conn.execute(
+            "SELECT u.id, u.name FROM connectors c JOIN users u ON u.id = c.owner_id "
+            "WHERE c.name = ?",
+            (record["name"],),
+        ).fetchone()
+        owner = {"id": row[0], "name": row[1]} if row else None
     return {
         "name": record["name"],
-        "title": f"Почта: {mailbox}" if spec.kind == "imap" and mailbox else spec.title,
-        "removable": bool(_EXTRA_MAILBOX.fullmatch(record["name"])),
+        "title": title,
+        "removable": bool(_EXTRA.fullmatch(record["name"])),
         "kind": spec.kind,
         "fields": list(spec.fields),
         "contract": spec.contract,
@@ -226,12 +284,21 @@ def _public(record: dict[str, Any]) -> dict[str, Any]:
         "checked_at": record["checked_at"],
         "detail": record["detail"],
         "test_service": bool(record["config"].get("test_service")),
+        "owner": owner,
     }
 
 
-def list_connectors(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    names = [*mailbox_names(conn), *(name for name in SPECS if name != "email")]
-    return [_public(_load(conn, name)) for name in names]
+def list_connectors(conn: sqlite3.Connection, user: Any = None) -> list[dict[str, Any]]:
+    """Все подключения (для обработчика) или те, что видит сотрудник: свои ящики и боты;
+    администратор видит всё."""
+    names = [
+        *names_of(conn, "email"),
+        *names_of(conn, "telegram"),
+        *(name for name in SPECS if name not in PERSONAL),
+    ]
+    if user is not None and getattr(user, "role", None) != "admin":
+        names = [name for name in names if can_manage(conn, name, user)]
+    return [_public(_load(conn, name), conn) for name in names]
 
 
 def configure(
@@ -248,6 +315,19 @@ def configure(
             config[key] = str(value).strip() if value is not None else ""
     if "test_service" in values:
         config["test_service"] = bool(values["test_service"])
+    if values.get("bot_token") not in (None, "", "••••••") and values.get("bot_token") != record[
+        "config"
+    ].get("bot_token"):
+        # Новый бот: начинаем с его первых сообщений.
+        config.pop("last_update_id", None)
+        config.pop("bot_username", None)
+    base = str(config.get("api_base") or "")
+    if spec.kind == "telegram" and base and ("t.me/" in base or not base.startswith("http")):
+        raise ConnectorError(
+            "INVALID_ARGUMENT",
+            "«Адрес Bot API» нужен только для тестового сервиса. Для настоящего бота оставьте "
+            "поле пустым, а ссылку вида t.me/… не вставляйте — достаточно токена.",
+        )
     configured = all(config.get(key) for key in _required(spec))
     with transaction(conn):
         conn.execute(
@@ -263,7 +343,7 @@ def configure(
             f"connector:{name}",
             fields=sorted(k for k in values if k not in SECRET_KEYS),
         )
-    return _public(_load(conn, name))
+    return _public(_load(conn, name), conn)
 
 
 def _required(spec: Spec) -> tuple[str, ...]:
@@ -307,10 +387,16 @@ def check(conn: sqlite3.Connection, name: str, user_id: int) -> dict[str, Any]:
             client.logout()
             detail = f"вход выполнен, папка {config.get('folder') or 'INBOX'} доступна"
         elif spec.kind == "telegram":
-            data = _http_json(_telegram_url(config, "getMe"))
+            data = _http_json(telegram_url(config, "getMe"))
             if not data or not data.get("ok"):
                 raise ConnectorError("CHECK_FAILED", "Telegram ответил без ok=true")
-            detail = f"бот @{data['result'].get('username')} отвечает"
+            username = str(data["result"].get("username") or "")
+            detail = f"бот @{username} отвечает"
+            if username and config.get("bot_username") != username:
+                config["bot_username"] = username
+                conn.execute(
+                    "UPDATE connectors SET config = ? WHERE name = ?", (json.dumps(config), name)
+                )
         else:
             _http_json(
                 _join(config["base_url"], config.get("health_path") or "/health"),
@@ -326,7 +412,7 @@ def check(conn: sqlite3.Connection, name: str, user_id: int) -> dict[str, Any]:
         detail = f"ТЕСТОВЫЙ СЕРВИС: {detail}"
     _set_state(conn, name, state, detail)
     audit(conn, "connector_checked", user_id, f"connector:{name}", state=state)
-    return _public(_load(conn, name))
+    return _public(_load(conn, name), conn)
 
 
 def imap_folder(name: str) -> str:
@@ -374,7 +460,7 @@ def _imap(config: dict[str, Any]) -> imaplib.IMAP4:
     return client
 
 
-def _telegram_url(config: dict[str, Any], method: str, query: dict[str, Any] | None = None) -> str:
+def telegram_url(config: dict[str, Any], method: str, query: dict[str, Any] | None = None) -> str:
     base = config.get("api_base") or "https://api.telegram.org"
     url = _join(base, f"bot{config['bot_token']}/{method}")
     return url + ("?" + urllib.parse.urlencode(query) if query else "")
@@ -461,6 +547,7 @@ def normalize_telegram(update: dict[str, Any]) -> dict[str, Any] | None:
     name = " ".join(filter(None, [sender.get("first_name"), sender.get("last_name")]))
     contact = f"@{sender['username']}" if sender.get("username") else f"tg:{sender.get('id')}"
     sent = datetime.fromtimestamp(int(message.get("date") or 0), UTC).date().isoformat()
+    chat = (message.get("chat") or {}).get("id") or sender.get("id")
     return {
         "external_id": str(update.get("update_id")),
         "lead": {
@@ -469,6 +556,8 @@ def normalize_telegram(update: dict[str, Any]) -> dict[str, Any] | None:
             "name": name or contact,
             "contact": contact,
             "text": str(text)[:5000],
+            # Чат, в который бот отвечает клиенту из окна письма.
+            **({"tg_chat_id": int(chat)} if chat else {}),
         },
     }
 
@@ -492,16 +581,35 @@ def import_messages(
                         items.append(normalize_email(part[1]))
         finally:
             client.logout()
-    elif name == "telegram":
-        data = _http_json(_telegram_url(config, "getUpdates", {"limit": limit}))
-        for update in (data or {}).get("result") or []:
+    elif is_telegram(name):
+        # Только сообщения после последнего полученного: иначе после 50 сообщений Telegram
+        # отдавал бы одни и те же старые, а новые не приходили бы.
+        # Отметка хранится у каждого бота и сбрасывается при смене токена.
+        last = config.get("last_update_id")
+        query: dict[str, Any] = {"limit": limit}
+        if last:
+            query["offset"] = int(last) + 1
+        data = _http_json(telegram_url(config, "getUpdates", query))
+        updates = (data or {}).get("result") or []
+        seen = [int(u["update_id"]) for u in updates if isinstance(u.get("update_id"), int)]
+        if seen:
+            config["last_update_id"] = max(seen)
+            conn.execute(
+                "UPDATE connectors SET config = ? WHERE name = ?", (json.dumps(config), name)
+            )
+            conn.commit()
+        for update in updates:
             item = normalize_telegram(update)
             if item:
                 items.append(item)
     else:
         raise ConnectorError("NOT_SUPPORTED", "Импорт заявок есть только для почты и Telegram")
     # Ящик, в который пришло письмо: по нему в списке заявок строятся вкладки.
-    inbox = str(config.get("user") or "").strip().lower() if is_mailbox(name) else None
+    if is_mailbox(name):
+        inbox = str(config.get("user") or "").strip().lower()
+    else:
+        bot = str(config.get("bot_username") or "").strip()
+        inbox = f"@{bot}".lower() if bot else ""
     return _store_imported(conn, store, name, items, user_id, inbox or None)
 
 

@@ -196,6 +196,10 @@ def init_db(path: Path) -> None:
     conn = connect(path)
     try:
         conn.executescript(SCHEMA)
+        # Миграция: у почтовых ящиков и ботов появился владелец-сотрудник.
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(connectors)")}
+        if "owner_id" not in columns:
+            conn.execute("ALTER TABLE connectors ADD COLUMN owner_id INTEGER REFERENCES users(id)")
         conn.execute(
             "INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', ?)",
             (str(SCHEMA_VERSION),),

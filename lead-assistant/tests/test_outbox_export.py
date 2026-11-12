@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from lead_assistant.storage import LeadStore
-from lead_assistant.web import connectors, outbox
+from lead_assistant.web import connectors, mockservice, outbox
 from lead_assistant.web.config import AppPaths
 from lead_assistant.web.db import connect
 from tests.web_helpers import PROCESSED, client_for, error_code, make_paths
@@ -139,6 +139,7 @@ def test_reply_is_sent_in_thread_recorded_and_not_sent_twice(tmp_path: Path) -> 
             assert detail["reply"] == {
                 "available": True,
                 "reason": None,
+                "channel": "email",
                 "to": "olga@client.example",
                 "from": INBOX,
                 "subject": "Re: Перевозка плитки",
@@ -178,7 +179,7 @@ def test_reply_is_not_offered_for_telegram_or_spam(tmp_path: Path) -> None:
     paths = make_paths(tmp_path, PROCESSED)
     with client_for(paths) as client:
         telegram = client.get("/api/leads/2").json()["reply"]
-        assert telegram["available"] is False and "только по почте" in telegram["reason"]
+        assert telegram["available"] is False and "вручную" in telegram["reason"]
         spam = client.get("/api/leads/3").json()["reply"]
         assert spam["available"] is False
 
@@ -208,3 +209,39 @@ def test_export_in_every_format_respects_filters(tmp_path: Path) -> None:
 
         bad = client.get("/api/leads/export?format=csv")
         assert bad.status_code == 400
+
+
+def test_telegram_reply_goes_to_the_client_chat_via_bot(tmp_path: Path) -> None:
+    server, base = mockservice.start()
+    mockservice.SENT.clear()
+    paths = make_paths(tmp_path, PROCESSED)
+    try:
+        with client_for(paths, "admin") as client:
+            client.put(
+                "/api/connectors/telegram", json={"bot_token": mockservice.TOKEN, "api_base": base}
+            )
+            client.post("/api/connectors/telegram/check")
+            imported = client.post("/api/connectors/telegram/import").json()
+            key = json.dumps(imported["ids"][0])
+            lead = client.get(f"/api/leads/{key}").json()
+            assert lead["lead"]["tg_chat_id"] == 42
+            assert lead["reply"]["available"] and lead["reply"]["channel"] == "telegram"
+            sent = client.post(
+                f"/api/leads/{key}/reply", json={"text": "Здравствуйте! Менеджер уточнит."}
+            )
+            assert sent.status_code == 200, sent.text
+            assert mockservice.SENT == [{"chat_id": 42, "text": "Здравствуйте! Менеджер уточнит."}]
+            # Повторный импорт: запрашиваются только новые сообщения (offset), дублей нет.
+            assert client.post("/api/connectors/telegram/import").json()["imported"] == 0
+            # Старые сообщения из файла — без чата бота: ответить можно только вручную.
+            old = client.get("/api/leads/2").json()["reply"]
+            assert old["available"] is False and "вручную" in old["reason"]
+    finally:
+        server.shutdown()
+
+
+def test_blocked_bot_is_explained() -> None:
+    import urllib.error
+
+    error = urllib.error.HTTPError("u", 403, "Forbidden", {}, None)  # type: ignore[arg-type]
+    assert "заблокировал бота" in outbox.explain_telegram_error(error)

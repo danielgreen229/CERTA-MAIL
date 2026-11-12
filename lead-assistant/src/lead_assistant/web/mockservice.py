@@ -20,12 +20,15 @@ SHIPMENTS: dict[str, dict[str, Any]] = {
     "55120": {"status": "задержано на складе транзита", "eta": None},
 }
 TOKEN = "123456:TEST"
+# Сообщения, которые бот «отправил» клиентам (для проверки ответов из приложения).
+SENT: list[dict[str, Any]] = []
 UPDATES = [
     {
         "update_id": 9001,
         "message": {
             "date": 1794470400,  # 2026-11-12 08:00 UTC
             "text": "Добрый день! Нужно перевезти 5 паллет из Казани в Москву до 20 ноября.",
+            "chat": {"id": 42, "type": "private"},
             "from": {
                 "id": 42,
                 "first_name": "Тест",
@@ -48,6 +51,22 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+
+    def do_POST(self) -> None:
+        url = urlparse(self.path)
+        parts = [p for p in url.path.split("/") if p]
+        length = int(self.headers.get("Content-Length") or 0)
+        body = json.loads(self.rfile.read(length) or b"{}")
+        if parts == [f"bot{TOKEN}", "sendMessage"]:
+            if body.get("chat_id") == 403:
+                self._send(
+                    403, {"ok": False, "description": "Forbidden: bot was blocked by the user"}
+                )
+                return
+            SENT.append(body)
+            self._send(200, {"ok": True, "result": {"message_id": len(SENT)}})
+        else:
+            self._send(404, {"ok": False, "description": "Not Found"})
 
     def do_GET(self) -> None:
         url = urlparse(self.path)

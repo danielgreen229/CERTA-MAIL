@@ -24,7 +24,7 @@ const router = createRouter({
     { path: '/jobs', component: JobsView },
     { path: '/quality', component: QualityView, meta: { role: 'supervisor' } },
     { path: '/knowledge', component: KnowledgeView },
-    { path: '/connectors', component: ConnectorsView, meta: { role: 'supervisor' } },
+    { path: '/connectors', component: ConnectorsView },
     { path: '/settings', component: SettingsView },
     { path: '/:pathMatch(.*)*', redirect: '/leads' },
   ],

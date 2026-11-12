@@ -383,39 +383,53 @@ def create_app(paths: AppPaths) -> Starlette:
 
     def list_connectors(request: Request) -> Response:
         with db() as conn:
-            current_user(request, conn)
-            return JSONResponse({"connectors": connectors.list_connectors(conn)})
+            user = current_user(request, conn)
+            return JSONResponse({"connectors": connectors.list_connectors(conn, user)})
+
+    def managed(conn: sqlite3.Connection, user: auth.User, name: str) -> None:
+        if not connectors.can_manage(conn, name, user):
+            raise ApiError(
+                403,
+                "FORBIDDEN",
+                "Это подключение может менять только его владелец или администратор",
+            )
 
     async def configure_connector(request: Request) -> Response:
         data = await body(request)
+        name = request.path_params["name"]
         with db() as conn:
-            user = current_user(request, conn, "admin")
-            return JSONResponse(
-                connectors.configure(conn, request.path_params["name"], data, user.id)
-            )
+            user = current_user(request, conn)
+            managed(conn, user, name)
+            return JSONResponse(connectors.configure(conn, name, data, user.id))
 
-    def add_mailbox(request: Request) -> Response:
+    async def add_mailbox(request: Request) -> Response:
+        data = await body(request) if await request.body() else {}
         with db() as conn:
-            user = current_user(request, conn, "admin")
-            return JSONResponse(connectors.add_mailbox(conn, user.id), status_code=201)
+            user = current_user(request, conn)
+            kind = str(data.get("kind") or "email")
+            return JSONResponse(connectors.add_connector(conn, kind, user.id), status_code=201)
 
     def remove_mailbox(request: Request) -> Response:
+        name = request.path_params["name"]
         with db() as conn:
-            user = current_user(request, conn, "admin")
-            connectors.remove_mailbox(conn, request.path_params["name"], user.id)
+            user = current_user(request, conn)
+            managed(conn, user, name)
+            connectors.remove_connector(conn, name, user.id)
         return JSONResponse({"ok": True})
 
     def check_connector(request: Request) -> Response:
+        name = request.path_params["name"]
         with db() as conn:
-            user = current_user(request, conn, "admin")
-            return JSONResponse(connectors.check(conn, request.path_params["name"], user.id))
+            user = current_user(request, conn)
+            managed(conn, user, name)
+            return JSONResponse(connectors.check(conn, name, user.id))
 
     def import_connector(request: Request) -> Response:
+        name = request.path_params["name"]
         with db() as conn:
-            user = current_user(request, conn, "supervisor")
-            return JSONResponse(
-                connectors.import_messages(conn, store, request.path_params["name"], user.id)
-            )
+            user = current_user(request, conn)
+            managed(conn, user, name)
+            return JSONResponse(connectors.import_messages(conn, store, name, user.id))
 
     def get_settings_view(request: Request) -> Response:
         with db() as conn:

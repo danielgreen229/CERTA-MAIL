@@ -88,7 +88,7 @@ export interface LeadDetail extends LeadSummary {
   history: Array<Record<string, unknown> & { type: string; at: string }>
   knowledge: { results: KbHit[]; conflicts: string[] }
   shipments: Array<{ number: string; data?: Record<string, unknown>; error?: string; source: string; fetched_at: string }>
-  reply: { available: boolean; reason: string | null; to: string | null; from: string | null; subject: string }
+  reply: { available: boolean; reason: string | null; channel: 'email' | 'telegram'; to: string | null; from: string | null; subject: string | null }
   replies: SentReply[]
 }
 
