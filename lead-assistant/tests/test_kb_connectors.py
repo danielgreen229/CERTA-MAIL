@@ -239,6 +239,48 @@ def test_email_is_normalized() -> None:
         "channel": "email",
         "name": "Иван Петров",
         "contact": "ivan@example.com",
-        "text": "Нужно перевезти 3 паллеты.",
+        "text": "Тема: Перевозка\nНужно перевезти 3 паллеты.",
     }
     assert json.dumps(item, ensure_ascii=False)
+
+
+def test_html_only_email_keeps_body_and_subject_with_facts() -> None:
+    raw = (
+        "From: promo@example.com\r\nSubject: Груз повреждён — накладная 55120\r\n"
+        "Content-Type: text/html; charset=utf-8\r\n\r\n"
+        "<style>p{color:red}</style><p>Две паллеты <b>разбиты</b>.</p><p>Акт не подписан.</p>"
+    ).encode()
+    text = connectors.normalize_email(raw)["lead"]["text"]
+    assert text == "Тема: Груз повреждён — накладная 55120\nДве паллеты разбиты.\nАкт не подписан."
+
+
+def test_env_presets_configure_and_check_but_never_override_admin(tmp_path: Path) -> None:
+    server, base = mockservice.start()
+    path = tmp_path / "app.db"
+    init_db(path)
+    conn = connect(path)
+    try:
+        env = {
+            "LEADS_TMS_BASE_URL": base,
+            "LEADS_TMS_STATUS_PATH": "/shipments/{number}",
+            "LEADS_EMAIL_HOST": "imap.example.test",
+            "LEADS_EMAIL_USER": "box@example.test",
+            "LEADS_EMAIL_PASSWORD": "  ",  # пустой пароль не считается заданным
+            "OTHER": "x",
+        }
+        assert connectors.env_presets(env) == {
+            "tms": {"base_url": base, "status_path": "/shipments/{number}"},
+            "email": {"host": "imap.example.test", "user": "box@example.test"},
+        }
+        applied = connectors.apply_env_presets(conn, env, 1)
+        # TMS настроен и сразу проверен; почте не хватает пароля — ждёт администратора.
+        assert applied == {"tms": "ok", "email": "not_configured"}
+        email = next(c for c in connectors.list_connectors(conn) if c["name"] == "email")
+        assert email["config"]["user"] == "box@example.test"
+        connectors.configure(conn, "tms", {"base_url": "http://admin.example.test"}, 1)
+        assert connectors.apply_env_presets(conn, env, 1) == {"email": "not_configured"}
+        tms = next(c for c in connectors.list_connectors(conn) if c["name"] == "tms")
+        assert tms["config"]["base_url"] == "http://admin.example.test"
+    finally:
+        conn.close()
+        server.shutdown()

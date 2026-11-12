@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import email
 import email.header
+import email.policy
 import email.utils
 import imaplib
 import json
@@ -18,8 +19,10 @@ import sqlite3
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from html.parser import HTMLParser
 from typing import Any
 
 from lead_assistant.storage import LeadStore
@@ -46,8 +49,8 @@ SPECS: dict[str, Spec] = {
             "Почта (IMAP)",
             "imap",
             ("host", "port", "user", "password", "folder"),
-            "Импорт непрочитанных писем папки как заявок channel=email. Повтор по Message-ID "
-            "исключён.",
+            "Импорт последних 50 писем папки как заявок channel=email (письма не помечаются "
+            "прочитанными). Повтор по Message-ID исключён.",
         ),
         Spec(
             "telegram",
@@ -112,6 +115,43 @@ def _load(conn: sqlite3.Connection, name: str) -> dict[str, Any]:
         "checked_at": row["checked_at"],
         "detail": row["detail"],
     }
+
+
+def env_presets(environ: Mapping[str, str]) -> dict[str, dict[str, str]]:
+    """Параметры подключений из окружения: ``LEADS_<ИМЯ>_<ПОЛЕ>``, например LEADS_EMAIL_HOST.
+
+    Так администратор задаёт подключение по умолчанию в ``.env`` (не в репозитории),
+    а пароль не попадает ни в код, ни в образ.
+    """
+    presets: dict[str, dict[str, str]] = {}
+    for name, spec in SPECS.items():
+        values = {
+            field: environ[key].strip()
+            for field in spec.fields
+            if (key := f"LEADS_{name.upper()}_{field.upper()}") in environ and environ[key].strip()
+        }
+        if values:
+            presets[name] = values
+    return presets
+
+
+def apply_env_presets(
+    conn: sqlite3.Connection, environ: Mapping[str, str], user_id: int
+) -> dict[str, str]:
+    """Настраивает из окружения подключения, которые ещё не настроены в интерфейсе.
+
+    Уже настроенное администратором не перезаписывается. Если все обязательные поля
+    заданы, подключение сразу проверяется. Возвращает {имя: состояние}.
+    """
+    applied: dict[str, str] = {}
+    for name, values in env_presets(environ).items():
+        if _load(conn, name)["state"] != "not_configured":
+            continue
+        record = configure(conn, name, values, user_id)
+        if record["state"] == "configured":
+            record = check(conn, name, user_id)
+        applied[name] = record["state"]
+    return applied
 
 
 def _public(record: dict[str, Any]) -> dict[str, Any]:
@@ -257,24 +297,60 @@ def _telegram_url(config: dict[str, Any], method: str, query: dict[str, Any] | N
     return url + ("?" + urllib.parse.urlencode(query) if query else "")
 
 
-def _decode(value: str | None) -> str:
-    if not value:
-        return ""
-    return str(email.header.make_header(email.header.decode_header(value)))
+class _HtmlText(HTMLParser):
+    BLOCKS = frozenset({"p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6"})
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+        self.skip = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in ("script", "style"):
+            self.skip += 1
+        elif tag in self.BLOCKS:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in ("script", "style") and self.skip:
+            self.skip -= 1
+        elif tag in self.BLOCKS:
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if not self.skip:
+            self.parts.append(data)
+
+
+def html_to_text(markup: str) -> str:
+    parser = _HtmlText()
+    parser.feed(markup)
+    parser.close()
+    lines = (" ".join(line.split()) for line in "".join(parser.parts).splitlines())
+    return "\n".join(line for line in lines if line)
 
 
 def normalize_email(raw: bytes) -> dict[str, Any]:
     message = email.message_from_bytes(raw)
-    name, address = email.utils.parseaddr(_decode(message.get("From")))
-    body = ""
+    # Современный разбор заголовков понимает и RFC 2047, и «сырой» UTF-8 (SMTPUTF8).
+    headers = email.message_from_bytes(raw, policy=email.policy.default)
+    name, address = email.utils.parseaddr(str(headers.get("From") or ""))
+    bodies: dict[str, str] = {}
     for part in message.walk() if message.is_multipart() else [message]:
-        if part.get_content_type() == "text/plain" and not part.get_filename():
+        kind = part.get_content_type()
+        if kind in ("text/plain", "text/html") and not part.get_filename() and kind not in bodies:
             payload = part.get_payload(decode=True)
             if isinstance(payload, bytes):
-                body = payload.decode(part.get_content_charset() or "utf-8", "replace")
-                break
-    subject = _decode(message.get("Subject"))
-    text = body.strip() or subject
+                bodies[kind] = payload.decode(part.get_content_charset() or "utf-8", "replace")
+    # Письмо только в HTML (рассылки, часть клиентов) не должно терять тело.
+    plain = (bodies.get("text/plain") or "").strip()
+    body = plain or html_to_text(bodies.get("text/html") or "")
+    subject = str(headers.get("Subject") or "").strip()
+    # Тема часто несёт суть («Груз повреждён — накладная 55120»), поэтому входит в текст.
+    if subject and body and subject.lower() not in body.lower():
+        text = f"Тема: {subject}\n{body}"
+    else:
+        text = body or subject
     try:
         sent = email.utils.parsedate_to_datetime(message.get("Date", "")).date().isoformat()
     except (TypeError, ValueError):
@@ -339,7 +415,9 @@ def import_messages(
                 items.append(item)
     else:
         raise ConnectorError("NOT_SUPPORTED", "Импорт заявок есть только для почты и Telegram")
-    return _store_imported(conn, store, name, items, user_id)
+    # Ящик, в который пришло письмо: по нему в списке заявок строятся вкладки.
+    inbox = str(config.get("user") or "").strip().lower() if name == "email" else None
+    return _store_imported(conn, store, name, items, user_id, inbox or None)
 
 
 def _store_imported(
@@ -348,6 +426,7 @@ def _store_imported(
     channel: str,
     items: list[dict[str, Any]],
     user_id: int,
+    inbox: str | None = None,
 ) -> dict[str, Any]:
     existing_sources = {
         str(lead.get("source_id")) for lead in store.snapshot().leads if lead.get("source_id")
@@ -368,7 +447,9 @@ def _store_imported(
             skipped += 1
             continue
         existing_sources.add(source_id)
-        fresh.append({**item["lead"], "source_id": source_id})
+        fresh.append(
+            {**item["lead"], "source_id": source_id, **({"inbox": inbox} if inbox else {})}
+        )
     ids = store.append_leads(fresh)
     with transaction(conn):
         for lead, lead_id in zip(fresh, ids, strict=True):

@@ -2,11 +2,14 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, ApiError, CATEGORY, PRIORITY, formatDate, type Job, type LeadSummary } from '../api'
+import FolderNav, { type FolderFilter, type SourceTab } from '../components/FolderNav.vue'
 import LeadCard from '../components/LeadCard.vue'
 
 interface ListResponse {
   leads: LeadSummary[]
   counts: Record<string, number>
+  folders: Record<string, number>
+  sources: SourceTab[]
   active_job: Job | null
 }
 
@@ -22,7 +25,16 @@ const filters = reactive({
   priority: String(route.query.priority ?? ''),
   state: String(route.query.state ?? ''),
   review: String(route.query.review ?? ''),
+  source: String(route.query.source ?? ''),
+  overdue: String(route.query.overdue ?? ''),
 })
+const foldersOpen = ref(false)
+
+function selectFolder(filter: FolderFilter) {
+  // Папка задаёт набор фильтров целиком; строка поиска сохраняется.
+  Object.assign(filters, { category: '', priority: '', state: '', review: '', source: '', overdue: '', ...filter })
+  foldersOpen.value = false
+}
 const selected = computed(() => (route.params.key ? String(route.params.key) : null))
 let timer: number | undefined
 
@@ -68,7 +80,7 @@ function close() {
 }
 
 function reset() {
-  Object.assign(filters, { q: '', category: '', priority: '', state: '', review: '' })
+  Object.assign(filters, { q: '', category: '', priority: '', state: '', review: '', source: '', overdue: '' })
 }
 
 const job = computed(() => data.value?.active_job ?? null)
@@ -90,9 +102,28 @@ onUnmounted(() => window.clearInterval(timer))
 <template>
   <main class="page">
     <div class="layout" :class="{ 'with-card': selected }">
+      <aside class="folder-pane" :class="{ open: foldersOpen }">
+        <FolderNav
+          v-if="data"
+          :counts="data.counts"
+          :folders="data.folders"
+          :sources="data.sources"
+          :current="filters"
+          @select="selectFolder"
+        />
+      </aside>
       <section class="list-pane">
         <div class="row" style="justify-content: space-between">
-          <h1>Заявки</h1>
+          <div class="row">
+            <button
+              class="folders-toggle"
+              type="button"
+              :aria-expanded="foldersOpen"
+              aria-label="Папки"
+              @click="foldersOpen = !foldersOpen"
+            >☰ Папки</button>
+            <h1>Заявки</h1>
+          </div>
           <button class="primary" :disabled="!!job" @click="startJob">
             {{ job ? 'Обработка идёт…' : 'Обработать новые' }}
           </button>
@@ -187,8 +218,10 @@ onUnmounted(() => window.clearInterval(timer))
 </template>
 
 <style scoped>
-.layout { display: grid; grid-template-columns: 1fr; gap: 16px; }
-.layout.with-card { grid-template-columns: minmax(320px, 2fr) 3fr; }
+.layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; }
+.layout.with-card { grid-template-columns: 200px minmax(300px, 2fr) 3fr; }
+.folder-pane { position: sticky; top: 64px; align-self: start; max-height: calc(100vh - 80px); overflow: auto; padding-top: 4px; }
+.folders-toggle { display: none; }
 .job { margin: 8px 0; }
 .counts { gap: 14px; margin: 8px 0; color: var(--muted); }
 .filters { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 8px; margin: 8px 0 12px; align-items: center; }
@@ -209,8 +242,26 @@ onUnmounted(() => window.clearInterval(timer))
   .filters { grid-template-columns: 1fr 1fr; }
   .filters input[type='search'] { grid-column: 1 / -1; }
 }
+/* Узкий экран или открыта карточка на среднем: папки прячутся за кнопкой «☰ Папки». */
+@media (max-width: 1280px) {
+  .layout.with-card { grid-template-columns: minmax(300px, 2fr) 3fr; }
+  .with-card .folder-pane { display: none; }
+  .with-card .folder-pane.open {
+    display: block; position: fixed; z-index: 20; top: 56px; left: 0; bottom: 0; width: 260px;
+    max-height: none; background: var(--surface); border-right: 1px solid var(--line); padding: 12px;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+  }
+  .with-card .folders-toggle { display: inline-flex; }
+}
 @media (max-width: 900px) {
-  .layout.with-card { grid-template-columns: 1fr; }
+  .layout, .layout.with-card { grid-template-columns: 1fr; }
+  .folder-pane { display: none; }
+  .folder-pane.open {
+    display: block; position: fixed; z-index: 20; top: 56px; left: 0; bottom: 0; width: min(280px, 85vw);
+    max-height: none; background: var(--surface); border-right: 1px solid var(--line); padding: 12px;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+  }
+  .folders-toggle { display: inline-flex; }
   .layout.with-card .list-pane { display: none; }
   .card-pane { position: static; max-height: none; }
 }

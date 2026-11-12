@@ -131,6 +131,7 @@ class LeadView:
             "key": lead_key(lead["id"]),
             "date": lead.get("date"),
             "channel": lead.get("channel"),
+            "source": source_of(lead),
             "name": lead.get("name"),
             "text": lead.get("text"),
             "status": lead.get("status"),
@@ -272,11 +273,46 @@ def all_views(conn: sqlite3.Connection, store: LeadStore) -> list[LeadView]:
     return [build_view(conn, lead, settings) for lead in leads]
 
 
+CHANNEL_TITLES = {"email": "Почта", "telegram": "Telegram"}
+
+
+def source_of(lead: Lead) -> str:
+    """Вкладка источника: ящик, в который пришло письмо, иначе канал заявки."""
+    inbox = lead.get("inbox")
+    if isinstance(inbox, str) and inbox.strip():
+        return inbox.strip().lower()
+    return str(lead.get("channel") or "other")
+
+
+def source_tabs(views: list[LeadView]) -> list[dict[str, Any]]:
+    """Вкладки «по ящикам и каналам» со счётчиками: сначала почтовые ящики, затем каналы."""
+    counts: dict[str, int] = {}
+    pending: dict[str, int] = {}
+    for view in views:
+        key = source_of(view.lead)
+        counts[key] = counts.get(key, 0) + 1
+        pending[key] = pending.get(key, 0) + (view.state in ("new", "pending"))
+    tabs = [
+        {
+            "key": key,
+            "title": CHANNEL_TITLES.get(key, key),
+            "mailbox": "@" in key and not key.startswith("@"),
+            "count": count,
+            "open": pending[key],
+        }
+        for key, count in counts.items()
+    ]
+    return sorted(tabs, key=lambda tab: (not tab["mailbox"], tab["title"].lower()))
+
+
 def filter_views(views: list[LeadView], query: dict[str, str]) -> list[LeadView]:
     text = (query.get("q") or "").strip().lower()
+    source = (query.get("source") or "").strip().lower()
     out = []
     for view in views:
         lead = view.lead
+        if source and source_of(lead) != source:
+            continue
         if text:
             haystack = " ".join(
                 str(lead.get(k) or "")
@@ -291,6 +327,8 @@ def filter_views(views: list[LeadView], query: dict[str, str]) -> list[LeadView]
         if query.get("state") and view.state != query["state"]:
             continue
         if query.get("review") == "1" and not view.summary()["needs_review"]:
+            continue
+        if query.get("overdue") == "1" and not view.summary()["overdue"]:
             continue
         out.append(view)
     return out

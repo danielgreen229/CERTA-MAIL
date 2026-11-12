@@ -261,3 +261,40 @@ def test_string_ids_keep_their_type(tmp_path: Path) -> None:
         }
         assert client.get('/api/leads/"1"').status_code == 404
     assert LeadStore(paths.leads_file).get_lead("A-1")["status"] == "new"
+
+
+def test_source_tabs_split_leads_by_mailbox_and_channel(tmp_path: Path) -> None:
+    paths = make_paths(tmp_path, PROCESSED)
+    store = LeadStore(paths.leads_file)
+    base = {
+        "date": "2026-11-12",
+        "name": "Ольга",
+        "text": "Нужно перевезти 2 тонны",
+        "status": "new",
+    }
+    store.append_leads(
+        [
+            {**base, "channel": "email", "contact": "o@x.test", "inbox": "Sales@Mail.test"},
+            {**base, "channel": "email", "contact": "p@x.test", "inbox": "sales@mail.test"},
+            {**base, "channel": "telegram", "contact": "@olga"},
+        ]
+    )
+    with client_for(paths) as client:
+        data = client.get("/api/leads").json()
+        tabs = {tab["key"]: tab for tab in data["sources"]}
+        assert data["sources"][0]["key"] == "sales@mail.test", "почтовые ящики идут первыми"
+        assert tabs["sales@mail.test"]["count"] == 2 and tabs["sales@mail.test"]["open"] == 2
+        in_telegram = sum(lead["channel"] == "telegram" for lead in data["leads"])
+        assert tabs["telegram"]["title"] == "Telegram" and tabs["telegram"]["count"] == in_telegram
+        # Счётчики папок левой панели сходятся с фильтрами.
+        assert data["folders"]["state:new"] == 3
+        assert data["folders"]["category:spam"] == len(
+            client.get("/api/leads?category=spam").json()["leads"]
+        )
+        overdue = client.get("/api/leads?overdue=1").json()["leads"]
+        assert len(overdue) == data["counts"]["overdue"] and all(x["overdue"] for x in overdue)
+        only_box = client.get("/api/leads?source=sales@mail.test").json()["leads"]
+        assert [lead["source"] for lead in only_box] == ["sales@mail.test"] * 2
+        assert len(client.get("/api/leads?source=email").json()["leads"]) == len(
+            [t for t in data["leads"] if t["source"] == "email"]
+        )

@@ -11,6 +11,7 @@ import argparse
 import contextlib
 import json
 import logging
+import os
 import sqlite3
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -52,6 +53,11 @@ def create_app(paths: AppPaths) -> Starlette:
     init_db(paths.db_file)
     with contextlib.closing(connect(paths.db_file)) as conn:
         password = auth.bootstrap_admin(conn, paths.data_dir / "initial-admin.txt")
+        admin = conn.execute("SELECT id FROM users WHERE login = 'admin'").fetchone()
+        if admin is not None:
+            applied = connectors.apply_env_presets(conn, os.environ, int(admin[0]))
+            for name, state in applied.items():
+                logger.info("подключение %s настроено из окружения: %s", name, state)
     if password:
         logger.warning(
             "создан администратор admin; начальный пароль записан в %s (смените при входе)",
@@ -163,9 +169,20 @@ def create_app(paths: AppPaths) -> Starlette:
                 "high": sum(v.lead.get("priority") == "high" for v in views),
                 "overdue": sum(v.summary()["overdue"] for v in views),
             }
+            # Счётчики «папок» левой панели: по состоянию и по категории.
+            folders: dict[str, int] = {}
+            for view in views:
+                for key in (f"state:{view.state}", f"category:{view.lead.get('category')}"):
+                    folders[key] = folders.get(key, 0) + 1
             active = jobs.active_job(conn)
         return JSONResponse(
-            {"leads": [v.summary() for v in filtered], "counts": counts, "active_job": active}
+            {
+                "leads": [v.summary() for v in filtered],
+                "counts": counts,
+                "folders": folders,
+                "sources": leads.source_tabs(views),
+                "active_job": active,
+            }
         )
 
     def full_detail(conn: sqlite3.Connection, user: auth.User, key: str) -> dict[str, Any]:
