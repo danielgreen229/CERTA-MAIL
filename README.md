@@ -22,6 +22,26 @@
 | Код | [`lead-assistant/`](lead-assistant/) — Python 3.12 (MCP, агент, API), Vue 3 + TypeScript (интерфейс) |
 | Комплект сдачи | [`release/`](release/) — обработанный `leads.json`, скриншоты, диалоги с ИИ, отчёт проверки, архив |
 | Версия | 2.1.0 · 244 автотеста · ruff, mypy strict, vue-tsc — без замечаний |
+| Лендинг | **[sitebypro.ru/certa](https://sitebypro.ru/certa/)** · исходники в [`landing/`](landing/) |
+| Видео | [видеоинструкция, 3:14](video/certa-instrukciya.mp4) · [субтитры](video/certa-instrukciya.srt) |
+
+## Видео и лендинг
+
+[![Видеоинструкция Certa: открыть ролик](landing/media/certa-instrukciya.jpg)](video/certa-instrukciya.mp4)
+
+**[Видеоинструкция](video/certa-instrukciya.mp4)** (3:14, со звуком, [субтитры](video/certa-instrukciya.srt)).
+В ролике показано, как помощник читает письма из почты и Telegram, определяет тему и
+срочность, готовит черновик, а менеджер проверяет и отправляет ответ.
+
+**[Лендинг](https://sitebypro.ru/certa/)** — одна страница о проекте. На ней девять
+коротких роликов: разбор заявки, локальная модель, три MCP-инструмента, проверки кодом,
+надёжная запись, рабочее место, почта и Telegram, качество в цифрах. Там же встроена
+видеоинструкция. Локально страница открывается из [`landing/index.html`](landing/index.html).
+Ролики лежат в [`landing/media/`](landing/media/), что в каком из них — в
+[`landing/media/README.md`](landing/media/README.md).
+
+Видео пересобирается скриптами из [`video/`](video/): `make_video.py` собирает полную
+инструкцию, `clips.py` и `scenes.html` — ролики для лендинга.
 
 ## Содержание
 
