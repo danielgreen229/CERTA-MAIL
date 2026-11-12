@@ -1,0 +1,10 @@
+{
+  "enabledMcpjsonServers": ["leads"],
+  "permissions": {
+    "allow": [
+      "mcp__leads__list_leads",
+      "mcp__leads__get_lead",
+      "mcp__leads__update_lead"
+    ]
+  }
+}

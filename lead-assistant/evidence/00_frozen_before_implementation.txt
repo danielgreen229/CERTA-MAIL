@@ -1,0 +1,6 @@
+# Контрольные суммы артефактов, зафиксированных до реализации правил и первого прогона модели
+# UTC: 2026-11-11T20:27:17Z
+42e058f2f594e3f32255ca8f9254c052046345eb774cfdb4965455c15ab545a9 *data/leads.original.json
+dd83eae095cec5f99bc8b95b8dd94a6cf70852d343c145bb9a877973ae961c3b *evals/cases.json
+1493a865f06811108f00024c80168d590b2888def8047b7cb47b956b741aab21 *evals/real_expectations.json
+79e67fa85e00390637f393075b3ab0fe2302e25f3cef601abb08a857b405eeb0 *docs/PROCESS.md

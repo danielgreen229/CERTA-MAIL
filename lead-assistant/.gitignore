@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Рабочая копия заявок, блокировка и артефакты прогонов содержат данные клиентов.
+data/leads.json
+data/*.lock
+runs/
+surrogate/
+acceptance/
+.llm/
+compare/
+work/

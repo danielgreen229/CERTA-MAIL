@@ -1,0 +1,21 @@
+оригинал : data\leads.original.json  sha256=42e058f2f594e3f32255ca8f9254c052046345eb774cfdb4965455c15ab545a9
+результат: compare\14b-gate2\real\leads.json  sha256=d8b9cbea6eeb0d3056fdfa30257603d27fa63f0a34d95d7034f0d6fda72bdae4
+  ID  было       стало      категория  приоритет черновик
+   1  new        processed  sale       medium    267 симв.
+   2  new        processed  complaint  high      249 симв.
+   3  new        processed  spam       low       null
+   4  new        processed  sale       medium    251 симв.
+   5  new        processed  question   medium    253 симв.
+   6  new        processed  spam       low       null
+   7  new        processed  sale       high      291 симв.
+   8  new        processed  question   low       193 симв.
+   9  new        processed  complaint  high      210 симв.
+  10  new        processed  question   low       214 симв.
+  11  new        processed  sale       medium    257 симв.
+  12  new        processed  spam       low       null
+  13  new        processed  complaint  high      283 симв.
+  14  new        processed  sale       medium    364 симв.
+  15  processed  processed  question   low       33 симв.
+исходных new: 14; осталось new: 0 
+ранее обработанные без изменений: [15]
+сверка пройдена: данные сохранены, изменены только разрешённые поля

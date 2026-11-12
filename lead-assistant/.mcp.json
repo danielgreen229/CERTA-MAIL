@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "leads": {
+      "type": "stdio",
+      "command": "${LEADS_PYTHON:-.venv/bin/python}",
+      "args": ["-m", "lead_assistant.server"],
+      "env": {
+        "LEADS_FILE": "${LEADS_FILE:-data/leads.json}"
+      }
+    }
+  }
+}

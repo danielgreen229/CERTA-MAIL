@@ -1,0 +1,339 @@
+{
+  "run_id": "20261111T224918Z-d2d61d",
+  "started_at": "2026-11-11T22:49:18.446Z",
+  "today": "2026-11-10",
+  "leads_file": {
+    "path": "C:\\Users\\Dozer\\Desktop\\work\\CERTATZ\\TZ\\lead-assistant\\compare\\14b\\synthetic\\eval-fixtures\\leads-eval-v1.json",
+    "sha256_before": "5c731b1ae4ed817118467fb2c46ad08943a10dd8e202437397e193e586602ad8",
+    "sha256_after": "3a960aa9f567b89f69623096060908e526a47be8c26c8a00f9b5c39322c3deb2",
+    "changed": true
+  },
+  "rules": {
+    "version": "1.2.1",
+    "sha256": "f629393fbc68e8c3b24b34f5b76d8e71b51543c3fc5e251dbd54a273cc21993e"
+  },
+  "runtime": {
+    "backend": "LocalLlmBackend",
+    "model_requested": "qwen3-14b",
+    "model": "Qwen3-14B-Q4_K_M.gguf",
+    "client": "llama.cpp b12110 (vulkan, win-x64)",
+    "model_key": "qwen3-14b",
+    "model_sha256": "500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0",
+    "context": 16384,
+    "reasoning": false,
+    "load_seconds": 5.1,
+    "models_seen": [
+      "C:\\Users\\Dozer\\Desktop\\work\\CERTATZ\\TZ\\lead-assistant\\.llm\\models\\Qwen3-14B-Q4_K_M.gguf"
+    ],
+    "tools": [
+      "get_lead",
+      "list_leads",
+      "update_lead"
+    ],
+    "mcp_servers": [
+      {
+        "name": "leads",
+        "status": "connected"
+      }
+    ],
+    "only_project_tools": true
+  },
+  "error": null,
+  "reconciliation": {
+    "found_ids": [
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109,
+      110,
+      111,
+      112,
+      113,
+      114,
+      115,
+      116,
+      117
+    ],
+    "written_ids": [
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109,
+      110,
+      111,
+      112,
+      113,
+      114,
+      115,
+      116,
+      117
+    ],
+    "already_processed_ids": [],
+    "failed": [],
+    "counts": {
+      "found": 17,
+      "written": 17,
+      "already_processed": 0,
+      "failed": 0
+    },
+    "counts_consistent": true,
+    "remaining_new_ids": [],
+    "arrived_during_run_ids": [],
+    "by_category": {
+      "sale": 5,
+      "complaint": 5,
+      "question": 4,
+      "spam": 3
+    },
+    "by_priority": {
+      "medium": 5,
+      "high": 6,
+      "low": 6
+    },
+    "file_status_counts": {
+      "processed": 18
+    },
+    "leads": [
+      {
+        "id": 101,
+        "category": "sale",
+        "priority": "medium",
+        "result": "written",
+        "evidence": "tool_confirmed",
+        "uncertain": false,
+        "manager_check": null,
+        "urgency_basis": null,
+        "next_action": null
+      },
+      {
+        "id": 102,
+        "category": "sale",
+        "priority": "high",
+        "result": "written",
+        "evidence": "tool_confirmed",
+        "uncertain": false,
+        "manager_check": null,
+        "urgency_basis": "Монтаж стенда 13 ноября, выставка открывается 14 ноября, позже груз не нужен. Сможете забрать завтра?",
+        "next_action": "Проверить возможность забрать груз завтра."
+      },
+      {
+        "id": 103,
+        "category": "complaint",
+        "priority": "medium",
+        "result": "written",
+        "evidence": "tool_confirmed",
+        "uncertain": false,
+        "manager_check": null,
+        "urgency_basis": null,
+        "next_action": null
+      },
+      {
+        "id": 104,
+        "category": "complaint",
+        "priority": "medium",
+        "result": "written",
+        "evidence": "tool_confirmed",
+        "uncertain": false,
+        "manager_check": null,
+        "urgency_basis": null,
+        "next_action": null
+      },
+      {
+        "id": 105,
+        "category": "sale",
+        "priority": "high",
+        "result": "written",
+        "evidence": "tool_confirmed",
+        "uncertain": false,
+        "manager_check": null,
+        "urgency_basis": "Подача таможенной декларации до 12 ноября.",
+        "next_action": "Проверить перечень требуемых документов и сроки высылки накладной."
+      },
+      {
+        "id": 106,
+        "category": "complaint",
+        "priority": "high",
+        "result": "written",
+        "evidence": "tool_confirmed",
+        "uncertain": false,
+        "manager_check": null,
+        "urgency_basis": "Машина стоит на складе под разгрузкой уже 9 часов, водитель не может уехать, перевозчик выставит штраф за простой.",
+        "next_action": "Уточнить сроки начала разгрузки."
+      },
+      {
+        "id": 107,
+        "category": "question",
+        "priority": "low",
+        "result": "written",
+        "evidence": "tool_confirmed",
+        "uncertain": false,
+        "manager_check": null,
+        "urgency_basis": null,
+        "next_action": null
+      },
+      {
+        "id": 108,
+        "category": "question",
+        "priority": "low",
+        "result": "written",
+        "evidence": "tool_confirmed",
+        "uncertain": false,
+        "manager_check": null,
+        "urgency_basis": null,
+        "next_action": null
+      },
+      {
+        "id": 109,
+        "category": "spam",
+        "priority": "low",
+        "result": "written",
+        "evidence": "tool_confirmed",
+        "uncertain": false,
+        "manager_check": null,
+        "urgency_basis": null,
+        "next_action": null
+      },
+      {
+        "id": 110,
+        "category": "spam",
+        "priority": "low",
+        "result": "written",
+        "evidence": "tool_confirmed",
+        "uncertain": false,
+        "manager_check": null,
+        "urgency_basis": null,
+        "next_action": null
+      },
+      {
+        "id": 111,
+        "category": "sale",
+        "priority": "high",
+        "result": "written",
+        "evidence": "tool_confirmed",
+        "uncertain": false,
+        "manager_check": null,
+        "urgency_basis": "просьба о действии в ближайшие дни",
+        "next_action": "проверить возможность доставки и сроки"
+      },
+      {
+        "id": 112,
+        "category": "spam",
+        "priority": "low",
+        "result": "written",
+        "evidence": "tool_confirmed",
+        "uncertain": false,
+        "manager_check": null,
+        "urgency_basis": null,
+        "next_action": null
+      },
+      {
+        "id": 113,
+        "category": "question",
+        "priority": "low",
+        "result": "written",
+        "evidence": "tool_confirmed",
+        "uncertain": false,
+        "manager_check": null,
+        "urgency_basis": null,
+        "next_action": "уточнить детали графика работы склада"
+      },
+      {
+        "id": 114,
+        "category": "sale",
+        "priority": "medium",
+        "result": "written",
+        "evidence": "tool_confirmed",
+        "uncertain": false,
+        "manager_check": null,
+        "urgency_basis": null,
+        "next_action": "проверить возможность и подготовить коммерческое предложение"
+      },
+      {
+        "id": 115,
+        "category": "complaint",
+        "priority": "medium",
+        "result": "written",
+        "evidence": "tool_confirmed",
+        "uncertain": false,
+        "manager_check": null,
+        "urgency_basis": null,
+        "next_action": "проверить ситуацию и разобраться с обращением"
+      },
+      {
+        "id": 116,
+        "category": "question",
+        "priority": "high",
+        "result": "written",
+        "evidence": "tool_confirmed",
+        "uncertain": false,
+        "manager_check": null,
+        "urgency_basis": "близкий срок доставки (15 ноября)",
+        "next_action": "уточнить текущий статус груза"
+      },
+      {
+        "id": 117,
+        "category": "complaint",
+        "priority": "high",
+        "result": "written",
+        "evidence": "tool_confirmed",
+        "uncertain": false,
+        "manager_check": null,
+        "urgency_basis": "серьёзные последствия задержки (остановка сборочной линии)",
+        "next_action": "проверить текущий статус и уточнить сроки доставки"
+      }
+    ],
+    "integrity_violations": [],
+    "report_mismatches": [],
+    "warnings": [],
+    "model_report_available": true
+  },
+  "metrics": {
+    "duration_ms": 165875,
+    "runtime_duration_ms": 165845,
+    "api_duration_ms": null,
+    "num_turns": 41,
+    "sessions": 2,
+    "model_invoked": true,
+    "tool_calls": {
+      "total": 38,
+      "by_tool": {
+        "list_leads": 3,
+        "get_lead": 17,
+        "update_lead": 18
+      },
+      "errors_by_code": {
+        "DRAFT_POLICY": 1
+      },
+      "without_result": 0,
+      "avg_duration_ms": {
+        "list_leads": 26.0,
+        "get_lead": 8.2,
+        "update_lead": 3.4
+      }
+    },
+    "tokens": {
+      "input_tokens": 228574,
+      "output_tokens": 5557
+    },
+    "tokens_status": "reported",
+    "tokens_by_model": null,
+    "cost": {
+      "reported_usd": null,
+      "estimated_usd": null,
+      "status": "not_applicable",
+      "note": "Локальная модель: платы за токены нет. Затраты прогона — время и электроэнергия сервера; оценка в деньгах не вычисляется."
+    }
+  },
+  "status": "ok",
+  "finished_at": "2026-11-11T22:52:04.323Z"
+}

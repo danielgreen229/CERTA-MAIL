@@ -1,0 +1,4 @@
+Сессия 20261111T215958Z-4d8ec1: C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant\surrogate\eval\runs\20261111T215958Z-4d8ec1
+export LEADS_FILE="C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant\surrogate\eval\leads.json"
+export LEADS_TRACE_FILE="C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant\surrogate\eval\runs\20261111T215958Z-4d8ec1\mcp_trace.jsonl"
+export LEADS_RUN_ID="20261111T215958Z-4d8ec1"

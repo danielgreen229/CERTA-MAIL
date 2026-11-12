@@ -1,0 +1,11 @@
+# Временные и локальные файлы
+*.log
+!release/evidence/**/*.log
+!lead-assistant/evidence/**/*.log
+.claude/settings.local.json
+lead-assistant/.claude/settings.local.json
+node_modules/
+dist-tmp/
+.env
+*.env
+!*.env.example

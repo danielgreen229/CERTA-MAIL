@@ -1,0 +1,67 @@
+# Чистая распаковка финального архива и установка по README
+# Среда: Git Bash на Windows 11 (Ubuntu в этой сессии недоступен), каталог с пробелами
+# UTC: 2026-11-11T22:13:57Z
+# каталог: /tmp/clean install final 011357/my project dir/lead-assistant
+# sha256 архива: a083a9da97e8f9e2cc6c1ea4ed1261cb333e81313023cbf690fde368c5e96161
+
+$ tar -tzf lead-assistant-1.0.0.tar.gz | wc -l
+60
+
+$ scripts/install.sh --dev
+Ignoring httpx2-jsfetch: markers 'sys_platform == "emscripten"' don't match your environment
+
+Successfully installed <пакеты из requirements-dev.lock>
+Successfully installed <пакеты из requirements-dev.lock>
+Создана рабочая копия data/leads.json (оригинал: data/leads.original.json).
+
+[OK  ] Python >= 3.12: 3.12.16 (C:\Users\Dozer\AppData\Local\Temp\clean install final 011357\my project dir\lead-assistant\.venv\Scripts\python.exe)
+[OK  ] пакет mcp: 2.3.0
+[OK  ] пакет claude-agent-sdk: 0.2.180
+[OK  ] правила агента: версия 1.1.0, sha256 ae1f5d0bab92
+[OK  ] файл заявок: C:\Users\Dozer\AppData\Local\Temp\clean install final 011357\my project dir\lead-assistant\data\leads.json — заявок 15, статусы {'new': 14, 'processed': 1}
+[OK  ] каталог данных доступен для записи: C:\Users\Dozer\AppData\Local\Temp\clean install final 011357\my project dir\lead-assistant\data
+[OK  ] MCP-сервер через stdio: инструменты: get_lead, list_leads, update_lead
+[OK  ] Claude Code CLI: 2.1.321 (Claude Code) (C:\Users\Dozer\AppData\Local\Temp\clean install final 011357\my project dir\lead-assistant\.venv\Lib\site-packages\claude_agent_sdk\_bundled\claude.exe)
+[FAIL] авторизация Claude: входа нет. Выполните: leads-doctor --login  (или задайте ANTHROPIC_API_KEY)
+Итог: не пройдено: авторизация Claude
+
+Установка завершена, но проверка нашла замечания (см. выше).
+код возврата install.sh: 0
+
+$ scripts/check.sh
+tests\test_agent.py .......                                              [  6%]
+tests\test_concurrency.py ...                                            [  8%]
+tests\test_mcp_stdio.py ..........                                       [ 17%]
+tests\test_project.py .......                                            [ 23%]
+tests\test_quality.py .........                                          [ 31%]
+tests\test_reconcile.py ............                                     [ 41%]
+tests\test_runner.py .............                                       [ 52%]
+tests\test_session.py ...                                                [ 55%]
+tests\test_storage.py ...............................................s.  [ 97%]
+tests\test_tracing.py ...                                                [100%]
+
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_storage.py:347: ����� ������� POSIX
+======================= 115 passed, 1 skipped in 45.92s =======================
+код возврата check.sh: 0
+
+$ sha256sum data/leads.original.json data/leads.json
+42e058f2f594e3f32255ca8f9254c052046345eb774cfdb4965455c15ab545a9 *data/leads.original.json
+42e058f2f594e3f32255ca8f9254c052046345eb774cfdb4965455c15ab545a9 *data/leads.json
+
+$ scripts/acceptance.sh   (без авторизации должен остановиться на проверке)
+=== проверка установки и авторизации
+$ .venv/Scripts/python.exe -m lead_assistant.doctor --leads-file data/leads.original.json
+[OK  ] Python >= 3.12: 3.12.16 (C:\Users\Dozer\AppData\Local\Temp\clean install final 011357\my project dir\lead-assistant\.venv\Scripts\python.exe)
+[OK  ] пакет mcp: 2.3.0
+[OK  ] пакет claude-agent-sdk: 0.2.180
+[OK  ] правила агента: версия 1.1.0, sha256 ae1f5d0bab92
+[OK  ] файл заявок: C:\Users\Dozer\AppData\Local\Temp\clean install final 011357\my project dir\lead-assistant\data\leads.original.json — заявок 15, статусы {'new': 14, 'processed': 1}
+[OK  ] каталог данных доступен для записи: C:\Users\Dozer\AppData\Local\Temp\clean install final 011357\my project dir\lead-assistant\data
+[OK  ] MCP-сервер через stdio: инструменты: get_lead, list_leads, update_lead
+[OK  ] Claude Code CLI: 2.1.321 (Claude Code) (C:\Users\Dozer\AppData\Local\Temp\clean install final 011357\my project dir\lead-assistant\.venv\Lib\site-packages\claude_agent_sdk\_bundled\claude.exe)
+[FAIL] авторизация Claude: входа нет. Выполните: leads-doctor --login  (или задайте ANTHROPIC_API_KEY)
+Итог: не пройдено: авторизация Claude
+--- FAIL: проверка установки и авторизации (код 1)
+Остановлено: исправьте замечания проверки и повторите.
+код возврата acceptance.sh: 1

@@ -1,0 +1,67 @@
+# Выбор рантайма и доказательство блокера авторизации
+# UTC: 2026-11-11T22:07:09Z; хост: Windows 11, Git Bash
+
+$ python --version
+Python 3.12.16
+$ pip show claude-agent-sdk mcp (версии)
+Name: claude-agent-sdk
+Version: 0.2.180
+Name: mcp
+Version: 2.3.0
+$ claude --version   (CLI, встроенный в claude-agent-sdk)
+2.1.321 (Claude Code)
+
+$ claude auth status
+{
+  "loggedIn": false,
+  "authMethod": "none",
+  "apiProvider": "firstParty",
+  "analyticsDisabled": false,
+  "projectsDirectory": "C:\\Users\\Dozer\\.claude\\projects",
+  "configDirectory": "C:\\Users\\Dozer\\.claude",
+  "loginExpiresAt": null
+}
+код возврата: 1
+
+$ leads-doctor
+[OK  ] Python >= 3.12: 3.12.16 (C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant\.venv\Scripts\python.exe)
+[OK  ] пакет mcp: 2.3.0
+[OK  ] пакет claude-agent-sdk: 0.2.180
+[OK  ] правила агента: версия 1.1.0, sha256 ae1f5d0bab92
+[OK  ] файл заявок: C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant\data\leads.json — заявок 15, статусы {'new': 14, 'processed': 1}
+[OK  ] каталог данных доступен для записи: C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant\data
+[OK  ] MCP-сервер через stdio: инструменты: get_lead, list_leads, update_lead
+[OK  ] Claude Code CLI: 2.1.321 (Claude Code) (C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant\.venv\Lib\site-packages\claude_agent_sdk\_bundled\claude.exe)
+[FAIL] авторизация Claude: входа нет. Выполните: leads-doctor --login  (или задайте ANTHROPIC_API_KEY)
+Итог: не пройдено: авторизация Claude
+код возврата: 1
+
+$ process-leads   (пробный запуск рабочего пути: Claude Agent SDK -> CLI -> MCP)
+[ошибка] AUTH_FAILED (слой: authorization): Not logged in · Please run /login
+[прогон 20261111T220715Z-3f04ec] файл заявок: C:\Users\Dozer\AppData\Local\Temp\probe_leads.json
+[файл] заявок: 15, новых: 14, sha256: 42e058f2f594e3f32255ca8f9254c052046345eb774cfdb4965455c15ab545a9
+[рантайм] Claude Code 2.1.321 · инструменты модели: mcp__leads__get_lead, mcp__leads__list_leads, mcp__leads__update_lead
+Статус: **не выполнен**
+- AUTH_FAILED: Not logged in · Please run /login
+[метрики] длительность 3625 мс · вызовов инструментов 0 · токены: вход 0, выход 0, кэш чтение 0, кэш запись 0 · стоимость: 0.0000 USD (сообщена)
+[файлы] C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant\runs\20261111T220715Z-3f04ec
+код возврата: 2
+
+$ cat runs/20261111T220715Z-3f04ec/trace.jsonl   (сокращено)
+{"ts": "2026-11-11T22:07:15.153Z", "event": "run_start", "run_id": "20261111T220715Z-3f04ec", "source": "runner", "leads_file": "C:\\Users\\Dozer\\AppData\\Local\\Temp\\probe_leads.json", "sha256_before": "42e058f2f594e3f32255ca8f9254c052046345eb774cfdb4965455c15ab545a9", "total": 15, "new": 14, "rules_version": "1.1.0", "model_requested": "claude-opus-5-5", "today": "2026-11-12"}
+{"ts": "2026-11-11T22:07:18.779Z", "event": "runtime_init", "run_id": "20261111T220715Z-3f04ec", "source": "runner", "model": "claude-opus-5-5", "claude_code_version": "2.1.321", "tools": ["mcp__leads__get_lead", "mcp__leads__list_leads", "mcp__leads__update_lead"], "mcp_servers": [{"name": "leads", "status": "connected"}], "permission_mode": "default", "api_key_source": "none"}
+{"ts": "2026-11-11T22:07:18.780Z", "event": "error", "run_id": "20261111T220715Z-3f04ec", "source": "runner", "stage": "agent", "code": "AUTH_FAILED", "layer": "authorization", "message": "Not logged in · Please run /login", "stderr_tail": []}
+{"ts": "2026-11-11T22:07:18.780Z", "event": "agent_result", "run_id": "20261111T220715Z-3f04ec", "source": "runner", "subtype": "success", "is_error": true, "api_error_status": null, "duration_ms": 57, "duration_api_ms": 0, "num_turns": 1, "total_cost_usd": 0, "usage": {"input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}, "model_usage": {}, "permission_denials": 0}
+{"ts": "2026-11-11T22:07:18.783Z", "event": "run_end", "run_id": "20261111T220715Z-3f04ec", "source": "runner", "status": "failed", "counts": {"found": 14, "written": 0, "already_processed": 0, "failed": 14}, "failed": [{"id": 1, "reason": "NOT_READ"}, {"id": 2, "reason": "NOT_READ"}, {"id": 3, "reason": "NOT_READ"}, {"id": 4, "reason": "NOT_READ"}, {"id": 5, "reason": "NOT_READ"}, {"id": 6, "reason": "NOT_READ"}, {"
+
+$ python -m lead_assistant.diagnose runs/20261111T220715Z-3f04ec
+Прогон 20261111T220715Z-3f04ec: статус failed, модель None, правила 1.1.0
+Учёт: {'found': 14, 'written': 0, 'already_processed': 0, 'failed': 14}
+Вызовы (раннер): {}  ошибки: нет
+Вызовы (сервер): {}  ошибки: нет
+Находки:
+  - прогон: AUTH_FAILED → слой «authorization»
+  - заявка 1: NOT_READ → слой «authorization»
+  - заявка 2: NOT_READ → слой «authorization»
+
+sha256 файла после попытки: \42e058f2f594e3f32255ca8f9254c052046345eb774cfdb4965455c15ab545a9 (совпадает с оригиналом)

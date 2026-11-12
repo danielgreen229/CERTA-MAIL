@@ -1,0 +1,91 @@
+# Надёжность: повреждённый JSON, отказ до замены, повтор, конфликт, параллельные процессы, повторный прогон
+# UTC: 2026-11-12T01:44:54Z; MINGW64_NT-10.0-26200 3.6.9-b4195d69.x86_64; Python 3.12.16
+
+$ .venv/Scripts/python.exe -m pytest tests/test_storage.py tests/test_concurrency.py -v
+============================= test session starts =============================
+platform win32 -- Python 3.12.16, pytest-9.2.0, pluggy-1.7.0 -- C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant
+configfile: pyproject.toml
+plugins: anyio-4.16.0
+collecting ... collected 52 items
+
+tests/test_storage.py::test_original_roundtrip_is_byte_identical PASSED  [  1%]
+tests/test_storage.py::test_list_leads_filter PASSED                     [  3%]
+tests/test_storage.py::test_list_leads_rejects_unknown_status PASSED     [  5%]
+tests/test_storage.py::test_get_lead_preserves_id_type_and_reports_missing PASSED [  7%]
+tests/test_storage.py::test_string_ids_are_supported PASSED              [  9%]
+tests/test_storage.py::test_update_changes_only_target_line_and_allowed_fields PASSED [ 11%]
+tests/test_storage.py::test_spam_is_stored_with_null_draft PASSED        [ 13%]
+tests/test_storage.py::test_repeat_with_same_values_is_noop PASSED       [ 15%]
+tests/test_storage.py::test_conflict_keeps_file_unchanged PASSED         [ 17%]
+tests/test_storage.py::test_non_new_status_cannot_be_processed PASSED    [ 19%]
+tests/test_storage.py::test_invalid_update_is_rejected_without_writing[args0-category] PASSED [ 21%]
+tests/test_storage.py::test_invalid_update_is_rejected_without_writing[args1-priority] PASSED [ 23%]
+tests/test_storage.py::test_invalid_update_is_rejected_without_writing[args2-status] PASSED [ 25%]
+tests/test_storage.py::test_invalid_update_is_rejected_without_writing[args3-status] PASSED [ 26%]
+tests/test_storage.py::test_invalid_update_is_rejected_without_writing[args4-draft_reply] PASSED [ 28%]
+tests/test_storage.py::test_invalid_update_is_rejected_without_writing[args5-draft_reply] PASSED [ 30%]
+tests/test_storage.py::test_invalid_update_is_rejected_without_writing[args6-draft_reply] PASSED [ 32%]
+tests/test_storage.py::test_invalid_update_is_rejected_without_writing[args7-too long] PASSED [ 34%]
+tests/test_storage.py::test_invalid_update_is_rejected_without_writing[args8-null] PASSED [ 36%]
+tests/test_storage.py::test_invalid_update_is_rejected_without_writing[args9-low] PASSED [ 38%]
+tests/test_storage.py::test_validation_reports_all_problems_at_once PASSED [ 40%]
+tests/test_storage.py::test_update_missing_lead PASSED                   [ 42%]
+tests/test_storage.py::test_bad_files_give_clear_errors[[{"id": 1, "status": "new"}-STORAGE_CORRUPT] PASSED [ 44%]
+tests/test_storage.py::test_bad_files_give_clear_errors[\xff\xfe not utf-8-STORAGE_CORRUPT] PASSED [ 46%]
+tests/test_storage.py::test_bad_files_give_clear_errors[[{"id": 1, "status": "new", "x": NaN}]-STORAGE_CORRUPT] PASSED [ 48%]
+tests/test_storage.py::test_bad_files_give_clear_errors[{"leads": []}-STORAGE_INVALID] PASSED [ 50%]
+tests/test_storage.py::test_bad_files_give_clear_errors[[{"status": "new"}]-STORAGE_INVALID] PASSED [ 51%]
+tests/test_storage.py::test_bad_files_give_clear_errors[[{"id": 1}]-STORAGE_INVALID] PASSED [ 53%]
+tests/test_storage.py::test_bad_files_give_clear_errors[[{"id": 1.5, "status": "new"}]-STORAGE_INVALID] PASSED [ 55%]
+tests/test_storage.py::test_bad_files_give_clear_errors[["not an object"]-STORAGE_INVALID] PASSED [ 57%]
+tests/test_storage.py::test_bad_files_give_clear_errors[[{"id": 1, "status": "new", "status": "processed"}]-STORAGE_INVALID] PASSED [ 59%]
+tests/test_storage.py::test_bad_files_give_clear_errors[[{"id": 1, "status": "new"}, {"id": 1, "status": "new"}]-DUPLICATE_ID] PASSED [ 61%]
+tests/test_storage.py::test_bad_files_give_clear_errors[[{"id": 1, "status": "new"}, {"id": "1", "status": "new"}]-DUPLICATE_ID] PASSED [ 63%]
+tests/test_storage.py::test_missing_file PASSED                          [ 65%]
+tests/test_storage.py::test_corrupt_error_points_to_position PASSED      [ 67%]
+tests/test_storage.py::test_failure_before_atomic_replace_leaves_file_intact PASSED [ 69%]
+tests/test_storage.py::test_uncertain_outcome_is_resolved_by_checking_state PASSED [ 71%]
+tests/test_storage.py::test_crash_before_replace_in_another_process PASSED [ 73%]
+tests/test_storage.py::test_lock_timeout_when_another_process_holds_the_lock PASSED [ 75%]
+tests/test_storage.py::test_lock_file_is_stable_and_separate PASSED      [ 76%]
+tests/test_storage.py::test_formatting_styles_are_preserved[2-\n] PASSED [ 78%]
+tests/test_storage.py::test_formatting_styles_are_preserved[2-\r\n] PASSED [ 80%]
+tests/test_storage.py::test_formatting_styles_are_preserved[4-\n] PASSED [ 82%]
+tests/test_storage.py::test_formatting_styles_are_preserved[4-\r\n] PASSED [ 84%]
+tests/test_storage.py::test_formatting_styles_are_preserved[None-\n] PASSED [ 86%]
+tests/test_storage.py::test_formatting_styles_are_preserved[None-\r\n] PASSED [ 88%]
+tests/test_storage.py::test_bom_and_ascii_escapes_are_preserved PASSED   [ 90%]
+tests/test_storage.py::test_file_permissions_are_preserved SKIPPED (...) [ 92%]
+tests/test_storage.py::test_missing_directory_is_reported_as_not_found PASSED [ 94%]
+tests/test_concurrency.py::test_parallel_updates_of_different_leads_are_not_lost PASSED [ 96%]
+tests/test_concurrency.py::test_parallel_updates_of_same_lead_have_single_winner PASSED [ 98%]
+tests/test_concurrency.py::test_parallel_repeats_with_same_values_write_once PASSED [100%]
+
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_storage.py:347: ����� ������� POSIX
+======================== 51 passed, 1 skipped in 4.60s ========================
+код возврата: 0
+
+$ .venv/Scripts/python.exe -m pytest -v tests/test_runner.py tests/test_local_backend.py -k repeat_run or lost_tool_response or someone_else or false_confirmation or skipped_lead or appended_during_run or forgotten_lead
+============================= test session starts =============================
+platform win32 -- Python 3.12.16, pytest-9.2.0, pluggy-1.7.0 -- C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant
+configfile: pyproject.toml
+plugins: anyio-4.16.0
+collecting ... collected 26 items / 18 deselected / 8 selected
+
+tests/test_runner.py::test_repeat_run_finds_nothing_and_keeps_checksum PASSED [ 12%]
+tests/test_runner.py::test_skipped_lead_is_reported_not_hidden PASSED    [ 25%]
+tests/test_runner.py::test_false_confirmation_by_model_is_caught PASSED  [ 37%]
+tests/test_runner.py::test_lead_processed_by_someone_else_during_run_is_counted_once PASSED [ 50%]
+tests/test_runner.py::test_lost_tool_response_is_resolved_by_file_state PASSED [ 62%]
+tests/test_runner.py::test_new_lead_appended_during_run_is_picked_up_by_next_session PASSED [ 75%]
+tests/test_local_backend.py::test_repeat_run_and_repeats_by_contact PASSED [ 87%]
+tests/test_local_backend.py::test_forgotten_lead_is_retried_then_reported PASSED [100%]
+
+====================== 8 passed, 18 deselected in 30.41s ======================
+код возврата: 0
+

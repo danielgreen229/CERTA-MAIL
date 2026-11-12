@@ -1,0 +1,30 @@
+# Контракт MCP: интеграционные тесты через stdio
+# UTC: 2026-11-12T01:44:40Z; MINGW64_NT-10.0-26200 3.6.9-b4195d69.x86_64; Python 3.12.16
+
+$ .venv/Scripts/python.exe -m pytest tests/test_mcp_stdio.py -v
+============================= test session starts =============================
+platform win32 -- Python 3.12.16, pytest-9.2.0, pluggy-1.7.0 -- C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Dozer\Desktop\work\CERTATZ\TZ\lead-assistant
+configfile: pyproject.toml
+plugins: anyio-4.16.0
+collecting ... collected 10 items
+
+tests/test_mcp_stdio.py::test_discovers_exactly_three_tools_with_schemas PASSED [ 10%]
+tests/test_mcp_stdio.py::test_list_leads_with_and_without_filter PASSED  [ 20%]
+tests/test_mcp_stdio.py::test_get_lead_preserves_id_type_and_reports_missing PASSED [ 30%]
+tests/test_mcp_stdio.py::test_string_ids_roundtrip PASSED                [ 40%]
+tests/test_mcp_stdio.py::test_update_outcomes_are_distinguishable PASSED [ 50%]
+tests/test_mcp_stdio.py::test_argument_type_errors_are_reported PASSED   [ 60%]
+tests/test_mcp_stdio.py::test_storage_errors_are_clear_and_server_survives PASSED [ 70%]
+tests/test_mcp_stdio.py::test_server_trace_has_codes_but_no_lead_content PASSED [ 80%]
+tests/test_mcp_stdio.py::test_stdout_carries_only_protocol_messages PASSED [ 90%]
+tests/test_mcp_stdio.py::test_server_requires_configured_path PASSED     [100%]
+
+============================= 10 passed in 10.18s =============================
+код возврата: 0
+
+$ .venv/Scripts/python.exe -m lead_assistant.mcp_call --list-tools --leads-file data/leads.original.json
+["get_lead", "list_leads", "update_lead"]
+код возврата: 0
+
